@@ -1,3 +1,5 @@
+# WARNING-THIS IS JUST A LOCAL COPY OF OPNssense Please See Below for Fully Supported Version
+
 OPNsense GUI and system management
 ==================================
 
