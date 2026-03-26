@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (C) 2025 Deciso B.V.
+ * Copyright (C) 2026 Deciso B.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,28 +26,38 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-namespace OPNsense\Unbound\FieldTypes;
+namespace OPNsense\Base\Constraints;
 
-use OPNsense\Base\FieldTypes\BaseField;
-
-class AliasRefCount extends BaseField
+/**
+ * Class SetConstraint, add a constraint to this field stating dependency of another field
+ * (if this field is not set then the referred field should also not be set)
+ * @package OPNsense\Base\Constraints
+ */
+class SetConstraint extends BaseConstraint
 {
-    protected $internalIsContainer = false;
-    private $refcountcache = null;
-
-    public function actionPostLoadingEvent()
+    /**
+     * Executes validation, expects a list of fields in "addFields" which to check for content.
+     * Fields are concerned empty if boolean false or containing an empty string
+     *
+     * @param $validator
+     * @param string $attribute
+     * @return boolean
+     */
+    public function validate($validator, $attribute): bool
     {
-        if ($this->refcountcache === null) {
-            $this->refcountcache = [];
-            foreach ($this->getParentModel()->aliases->alias->iterateItems() as $node) {
-                $uuid = $node->host->getValue();
-                if (!isset($this->refcountcache[$uuid])) {
-                    $this->refcountcache[$uuid] = 0;
+        $node = $this->getOption('node');
+
+        if ($node && !$node->isSet()) {
+            $parentNode = $node->getParentNode();
+
+            foreach (array_unique($this->getOptionValueList('addFields')) as $fieldname) {
+                if (!is_null($parentNode->$fieldname) && $parentNode->$fieldname->isSet()) {
+                    $this->appendMessage($validator, $attribute);
+                    break;
                 }
-                $this->refcountcache[$uuid]++;
             }
         }
-        $uuid = $this->getParentNode()->getAttribute('uuid') ?? '';
-        $this->setValue($this->refcountcache[$uuid] ?? '0');
+
+        return true;
     }
 }
