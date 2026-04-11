@@ -72,23 +72,13 @@ class KeaDhcpv6 extends BaseModel
             $key = $subnet->__reference;
             if (!in_array($subnet->interface->getValue(), $this_interfaces)) {
                 $messages->appendMessage(
-                    new Message(gettext("Interface not configured in general settings"), $key . ".interface")
+                    new Message(gettext('Interface is not selected in the general settings.'), $key . ".interface")
                 );
             }
-            foreach ($subnet->pools->getValues() as $pool) {
-                if (Util::isSubnet($pool)) {
-                    $range = Util::cidrToRange($pool);
-                } else {
-                    $range = explode('-', $pool);
-                }
-                foreach (!empty($range) ? $range : [] as $addr) {
-                    if (!Util::isIPInCIDR($addr, $subnet->subnet->getValue())) {
-                        $messages->appendMessage(
-                            new Message(sprintf(gettext("Pool %s not in specified subnet"), $pool), $key . ".pools")
-                        );
-                        break;
-                    }
-                }
+            foreach ($subnet->pools->checkSubnet($subnet->subnet->getValue()) as $pool) {
+                $messages->appendMessage(
+                    new Message(sprintf(gettext('Pool "%s" not in specified subnet.'), $pool), $key . ".pools")
+                );
             }
         }
         // validate changed pd_pools
@@ -160,7 +150,7 @@ class KeaDhcpv6 extends BaseModel
         return $hostname;
     }
 
-    private function getConfigSubnets()
+    private function getConfigSubnets($ddns_enabled = false)
     {
         $cfg = Config::getInstance()->object();
         $result = [];
@@ -200,7 +190,7 @@ class KeaDhcpv6 extends BaseModel
                 }
             }
             /* add pools */
-            foreach (array_filter(explode("\n", $subnet->pools->getValue())) as $pool) {
+            foreach ($subnet->pools->getValues() as $pool) {
                 $record['pools'][] = ['pool' => $pool];
             }
             /* add pd-pools */
@@ -270,6 +260,13 @@ class KeaDhcpv6 extends BaseModel
                 }
                 $record['option-data'][] = $entry;
             }
+            /* DDNS per subnet settings */
+            if ($ddns_enabled) {
+                if (!$subnet->ddns_qualifying_suffix->isEmpty()) {
+                    $record['ddns-qualifying-suffix'] = $subnet->ddns_qualifying_suffix->getValue();
+                }
+                $record['ddns-send-updates'] = !$subnet->ddns_dns_server->isEmpty();
+            }
             $result[] = $record;
         }
         return $result;
@@ -305,11 +302,18 @@ class KeaDhcpv6 extends BaseModel
 
     public function generateConfig($target = '/usr/local/etc/kea/kea-dhcp6.conf')
     {
+        $ddns = new KeaDdns();
+        $ddns_enabled = !$ddns->general->enabled->isEmpty();
         $cnf = [
             'Dhcp6' => [
                 'valid-lifetime' => $this->general->valid_lifetime->asInt(),
                 'interfaces-config' => [
-                    'interfaces' => $this->getConfigPhysicalInterfaces()
+                    'interfaces' => $this->getConfigPhysicalInterfaces(),
+                    /* socket retries are on a per-interface basis, failing to open one won't affect others */
+                    'service-sockets-max-retries' => !$this->general->service_sockets_max_retries->isEmpty() ?
+                                                     $this->general->service_sockets_max_retries->asInt() : 5,
+                    'service-sockets-retry-wait-time' => !$this->general->service_sockets_retry_wait_time->isEmpty() ?
+                                                         $this->general->service_sockets_retry_wait_time->asInt() : 5000,
                 ],
                 'lease-database' => [
                     'type' => 'memfile',
@@ -330,7 +334,11 @@ class KeaDhcpv6 extends BaseModel
                         'severity' => 'INFO',
                     ]
                 ],
-                'subnet6' => $this->getConfigSubnets(),
+                'subnet6' => $this->getConfigSubnets($ddns_enabled),
+                'hooks-libraries' => [
+                    ['library' => '/usr/local/lib/kea/hooks/libdhcp_lease_cmds.so'],
+                    ['library' => '/usr/local/lib/kea/hooks/libdhcp_host_cmds.so']
+                ],
             ]
         ];
         $client_classes = $this->getConfigClientClasses();
@@ -341,45 +349,35 @@ class KeaDhcpv6 extends BaseModel
         if ($expiredLeasesConfig !== null) {
             $cnf['Dhcp6']['expired-leases-processing'] = $expiredLeasesConfig;
         }
-        if (!(new KeaCtrlAgent())->general->enabled->isEmpty()) {
-            $cnf['Dhcp6']['hooks-libraries'] = [];
-            $cnf['Dhcp6']['hooks-libraries'][] = [
-                'library' => '/usr/local/lib/kea/hooks/libdhcp_lease_cmds.so'
-            ];
-            $cnf['Dhcp6']['hooks-libraries'][] = [
-                'library' => '/usr/local/lib/kea/hooks/libdhcp_host_cmds.so'
-            ];
-            if (!$this->ha->enabled->isEmpty()) {
-                $record = [
-                    'library' => '/usr/local/lib/kea/hooks/libdhcp_ha.so',
-                    'parameters' => [
-                        'high-availability' => [
-                            [
-                                'this-server-name' => $this->getConfigThisServerHostname(),
-                                'mode' => 'hot-standby',
-                                'heartbeat-delay' => 10000,
-                                'max-response-delay' => 60000,
-                                'max-ack-delay' => 5000,
-                                'max-unacked-clients' => $this->ha->max_unacked_clients->asInt(),
-                                'sync-timeout' => 60000,
-                            ]
+        if (!$this->ha->enabled->isEmpty()) {
+            $record = [
+                'library' => '/usr/local/lib/kea/hooks/libdhcp_ha.so',
+                'parameters' => [
+                    'high-availability' => [
+                        [
+                            'this-server-name' => $this->getConfigThisServerHostname(),
+                            'mode' => 'hot-standby',
+                            'heartbeat-delay' => 10000,
+                            'max-response-delay' => 60000,
+                            'max-ack-delay' => 5000,
+                            'max-unacked-clients' => $this->ha->max_unacked_clients->asInt(),
+                            'sync-timeout' => 60000,
                         ]
                     ]
-                ];
-                foreach ($this->ha_peers->peer->iterateItems() as $peer) {
-                    if (!isset($record['parameters']['high-availability'][0]['peers'])) {
-                        $record['parameters']['high-availability'][0]['peers'] = [];
-                    }
-                    $record['parameters']['high-availability'][0]['peers'][] = array_map(
-                        fn($x) => $x->getValue(),
-                        iterator_to_array($peer->iterateItems())
-                    );
+                ]
+            ];
+            foreach ($this->ha_peers->peer->iterateItems() as $peer) {
+                if (!isset($record['parameters']['high-availability'][0]['peers'])) {
+                    $record['parameters']['high-availability'][0]['peers'] = [];
                 }
-                $cnf['Dhcp6']['hooks-libraries'][] = $record;
+                $record['parameters']['high-availability'][0]['peers'][] = array_map(
+                    fn($x) => $x->getValue(),
+                    iterator_to_array($peer->iterateItems())
+                );
             }
+            $cnf['Dhcp6']['hooks-libraries'][] = $record;
         }
-        $ddns = new KeaDdns();
-        if (!$ddns->general->enabled->isEmpty()) {
+        if ($ddns_enabled) {
             $cnf['Dhcp6']['dhcp-ddns'] = [
                 'enable-updates' => true,
                 'server-ip' => $ddns->general->server_ip->getValue(),

@@ -12,6 +12,8 @@
             <interfaces type="InterfaceField">
                 <Multiple>Y</Multiple>
             </interfaces>
+            <service_sockets_max_retries type="IntegerField"/>
+            <service_sockets_retry_wait_time type="IntegerField"/>
             <valid_lifetime type="IntegerField">
                 <Default>4000</Default>
                 <Required>Y</Required>
@@ -109,8 +111,7 @@
                     </Model>
                     <Multiple>Y</Multiple>
                 </option>
-                <pools type=".\KeaPoolsField">
-                </pools>
+                <pools type=".\KeaPoolsField"/>
                 <interface type="InterfaceField">
                     <Required>Y</Required>
                 </interface>
@@ -126,6 +127,7 @@
                         </check001>
                     </Constraints>
                 </ddns_forward_zone>
+                <ddns_qualifying_suffix type="HostnameField"/>
                 <ddns_dns_server type="NetworkField">
                     <NetMaskAllowed>N</NetMaskAllowed>
                     <Constraints>
