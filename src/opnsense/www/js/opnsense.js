@@ -217,6 +217,9 @@ function setFormData(parent,data) {
                     } else if (targetNode.attr('type') !== 'file') {
                         // regular input type
                         targetNode.val(htmlDecode(node[keypart]));
+                        if (node['%' + keypart] !== undefined) {
+                            targetNode.attr('placeholder', htmlDecode(node['%' + keypart]));
+                        }
                     }
                     targetNode.change();
                 }
@@ -369,4 +372,17 @@ function download_content(payload, filename, file_type) {
             a_tag.get(0).click();
         }
     });
+}
+
+/**
+ * @param {*} f function to be executed
+ * @param {*} delay delay in ms
+ * @returns wrapper delaying f until delay ms have passed since last invocation.
+ */
+function debounce(f, delay = 50) {
+    let handle;
+    return (...args) => {
+        clearTimeout(handle);
+        handle = setTimeout(() => f(...args), delay);
+    };
 }

@@ -1,8 +1,7 @@
-#!/usr/local/bin/php
 <?php
 
 /*
- * Copyright (C) 2023-2026 Franco Fichtner <franco@opnsense.org>
+ * Copyright (C) 2026 Deciso B.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,43 +26,39 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-require_once('util.inc');
-require_once('script/load_phalcon.php');
+namespace tests\OPNsense\Base\FieldTypes;
 
-use OPNsense\Core\Config;
+// @CodingStandardsIgnoreStart
+require_once 'Field_Framework_TestCase.php';
+// @CodingStandardsIgnoreEnd
 
-$config = Config::getInstance()->object();
-$url_sub = '';
+use OPNsense\Base\FieldTypes\UpdateOnlyTextField;
 
-/* canonically handles OPNsense.conf, OPNsense-aux.conf and FreeBSD.conf */
-
-$frmt = ['/usr/local/sbin/opnsense-update -sd -A %s'];
-$args = [shell_safe('opnsense-version -x')]; /* calculate the effective ABI */
-
-if (!empty($config->system->firmware->subscription)) {
-    /*
-     * Append the url now that it is not in the mirror anymore.
-     * This only ever works if the mirror is set to a non-default.
+class UpdateOnlyTextFieldTest extends Field_Framework_TestCase
+{
+    /**
+     * test construct
      */
-    $url_sub = '/' . $config->system->firmware->subscription;
-} else {
-    /* clear the license file when no subscription key is set */
-    @unlink('/usr/local/opnsense/version/core.license');
-}
+    public function testCanBeCreated()
+    {
+        $this->assertInstanceOf('\OPNsense\Base\FieldTypes\UpdateOnlyTextField', new UpdateOnlyTextField());
+    }
 
-if (!empty($config->system->firmware->mirror)) {
-    $frmt[] = '-m %s';
-    $args[] = $config->system->firmware->mirror . $url_sub;
+    /**
+     * test a few additional use cases on top of TextField
+     */
+    public function testBasicExtensions()
+    {
+        $field = new UpdateOnlyTextField();
+        $field->setMask('/^regexpattern$/');
+        $field->setValue('regexpattern');
+        $this->assertEquals('', (string)$field);
+        $this->assertEquals('regexpattern', $field->getValue());
+        $field->setValue('');
+        $this->assertEquals('', (string)$field);
+        $this->assertEquals('regexpattern', $field->getValue());
+        $this->assertEmpty($this->validate($field));
+        $field->setValue('nottheregex');
+        $this->assertContains('Regex', $this->validate($field));
+    }
 }
-
-if (!empty($config->system->firmware->flavour)) {
-    $frmt[] = '-n %s';
-    $args[] = (string)$config->system->firmware->flavour;
-}
-
-if (!empty($config->system->firmware->aux)) {
-    $frmt[] = '-E';
-}
-
-/* rewrite the config via the defaults and possible arguments */
-shell_safe($frmt, $args);

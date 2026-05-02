@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Franco Fichtner <franco@opnsense.org>
+# Copyright (c) 2025-2026 Franco Fichtner <franco@opnsense.org>
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -134,6 +134,10 @@ push:
 	@${GIT} push
 	@${GIT} checkout ${CORE_MAIN}
 
+merge: ${CORE_MAIN}
+	@${GIT} fetch ${CORE_UPSTREAM}
+	@${GIT} merge ${CORE_UPSTREAM}/${CORE_MAIN}
+
 checkout:
 .for DIR in ${.CURDIR}/src
 .if exists(${DIR})
@@ -151,6 +155,10 @@ vim:
 		FOUND="$$(echo "$${FOUND}" | grep -iF "$$(dirname '${vim_ARG}')")"; \
 	fi; \
 	if [ -n "$${FOUND}" ]; then \
+		MATCH="$$(echo "$${FOUND}" | grep -i "/$$(basename '${vim_ARG}')$$"| true)"; \
+		if [ -n "$${MATCH}" ]; then \
+			FOUND="$${MATCH}"; \
+		fi; \
 		if [ "$$(echo "$${FOUND}" | wc -l | awk '{ print $$1 }')" = "1" ]; then \
 			${VIM} "$${FOUND}"; \
 			${PHPBIN} -l "$${FOUND}"; \

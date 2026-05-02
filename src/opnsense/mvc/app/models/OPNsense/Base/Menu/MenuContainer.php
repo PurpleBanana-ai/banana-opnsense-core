@@ -1,8 +1,7 @@
-#!/usr/local/bin/php
 <?php
 
 /*
- * Copyright (C) 2023 Franco Fichtner <franco@opnsense.org>
+ * Copyright (C) 2026 Deciso B.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,7 +26,24 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-$conf = '/usr/local/etc/pkg/repos/FreeBSD.conf';
+namespace OPNsense\Base\Menu;
 
-/* ensure that FreeBSD repo is off to avoid obvious breakage */
-@copy($conf . '.sample', $conf);
+abstract class MenuContainer
+{
+    private ?MenuSystem $menusystem = null;
+
+    public function __construct(MenuSystem $menusystem)
+    {
+        $this->menusystem = $menusystem;
+    }
+
+    public function appendItem($root, $id, $properties)
+    {
+        return $this->menusystem->appendItem($root, $id, $properties);
+    }
+
+    public function collect()
+    {
+        return;
+    }
+}

@@ -1,8 +1,7 @@
-#!/usr/local/bin/php
 <?php
 
 /*
- * Copyright (C) 2023-2026 Franco Fichtner <franco@opnsense.org>
+ * Copyright (C) 2026 Deciso B.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,43 +26,24 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-require_once('util.inc');
-require_once('script/load_phalcon.php');
+namespace OPNsense\Routes\Migrations;
 
+use OPNsense\Base\BaseModelMigration;
 use OPNsense\Core\Config;
 
-$config = Config::getInstance()->object();
-$url_sub = '';
-
-/* canonically handles OPNsense.conf, OPNsense-aux.conf and FreeBSD.conf */
-
-$frmt = ['/usr/local/sbin/opnsense-update -sd -A %s'];
-$args = [shell_safe('opnsense-version -x')]; /* calculate the effective ABI */
-
-if (!empty($config->system->firmware->subscription)) {
-    /*
-     * Append the url now that it is not in the mirror anymore.
-     * This only ever works if the mirror is set to a non-default.
-     */
-    $url_sub = '/' . $config->system->firmware->subscription;
-} else {
-    /* clear the license file when no subscription key is set */
-    @unlink('/usr/local/opnsense/version/core.license');
+class M1_0_1 extends BaseModelMigration
+{
+    public function run($model)
+    {
+        $cfgObj = Config::getInstance()->object();
+        if (isset($cfgObj->staticroutes->route)) {
+            $modelRoutes = iterator_to_array($model->route->iterateItems());
+            foreach ($cfgObj->staticroutes->route as $route) {
+                $uuid = (string)$route['uuid'];
+                if (!empty($uuid) && isset($modelRoutes[$uuid]) && isset($route->disabled)) {
+                    $modelRoutes[$uuid]->enabled = empty((string)$route->disabled) ? '1' : '0';
+                }
+            }
+        }
+    }
 }
-
-if (!empty($config->system->firmware->mirror)) {
-    $frmt[] = '-m %s';
-    $args[] = $config->system->firmware->mirror . $url_sub;
-}
-
-if (!empty($config->system->firmware->flavour)) {
-    $frmt[] = '-n %s';
-    $args[] = (string)$config->system->firmware->flavour;
-}
-
-if (!empty($config->system->firmware->aux)) {
-    $frmt[] = '-E';
-}
-
-/* rewrite the config via the defaults and possible arguments */
-shell_safe($frmt, $args);

@@ -26,6 +26,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+
 require_once("interfaces.inc");
 require_once("config.inc");
 require_once("util.inc");
@@ -77,7 +78,7 @@ $result['ll'] = strtoupper($ll . ':' . $system_mac);
 
 // UUID
 $uuid = '';
-$type = "\x00\x00\x00\x04" . random_bytes(16);
+$type = "\x00\x04" . random_bytes(16);
 for ($count = 0; $count < strlen($type);) {
     $uuid .= bin2hex($type[$count]);
     $count++;

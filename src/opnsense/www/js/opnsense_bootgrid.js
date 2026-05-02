@@ -701,7 +701,7 @@ class UIBootgrid {
         });
 
         this.table.on('dataLoading', () => {
-            window.addEventListener('resize', this._debounce(() => {
+            window.addEventListener('resize', debounce(() => {
                 // this is mainly intended for scaling the width of the table if
                 // the width of the window changes.
                 this.table.redraw();
@@ -722,7 +722,7 @@ class UIBootgrid {
             this._onDataProcessed();
         });
 
-        this.table.on('dataChanged', this._debounce(() => {
+        this.table.on('dataChanged', debounce(() => {
             // debounce this so we catch the correct event if
             // data has been added (this event fires in rapid succession in this case,
             // but doesn't trigger dataProcessed at the end)
@@ -806,7 +806,7 @@ class UIBootgrid {
             this.$element.trigger("deselected.rs.jquery.bootgrid", [[row.getData()]]);
         });
 
-        this.table.on("rowSelectionChanged", this._debounce((data, rows, selected, deselected) => {
+        this.table.on("rowSelectionChanged", debounce((data, rows, selected, deselected) => {
             // XXX debouncing this is a bit of a hack, but this function is run
             // for both the selection & deselection, while we only want to know
             // the last known action.
@@ -840,7 +840,7 @@ class UIBootgrid {
                 this.pageHeight = pageTarget.clientHeight;
                 this.tableHeight = tableTarget.clientHeight;
 
-                const pageObserver = new ResizeObserver(this._debounce((entries) => {
+                const pageObserver = new ResizeObserver(debounce((entries) => {
                     for (let entry of entries) {
                         const topDistance = document.getElementById(this.id).getBoundingClientRect().top;
                         this.pageHeight = entry.contentRect.height - topDistance;
@@ -852,7 +852,7 @@ class UIBootgrid {
                 }));
                 pageObserver.observe(pageTarget);
 
-                const tableObserver = new ResizeObserver(this._debounce((entries) => {
+                const tableObserver = new ResizeObserver(debounce((entries) => {
                     for (let entry of entries) {
                         this.tableHeight = entry.contentRect.height;
                         this._onDimensionChange();
@@ -2056,25 +2056,7 @@ class UIBootgrid {
     showSaveAlert(event) {
         let editAlert = this.$compatElement.attr('data-editAlert');
         if (editAlert !== undefined) {
-            const $el = $("#" + editAlert);
-            const rect = $(".page-content-head").first()[0].getBoundingClientRect();
-            const top = $('.navbar').first().outerHeight() + 5;
-            const centerX = rect.left + (rect.width / 2);
-
-            $el.css({
-                position: "fixed",
-                top: top + "px",
-                left: centerX + "px",
-                right: "auto",
-                zIndex: 9999,
-                transform: "translateX(-50%)"
-            });
-
-            $el.slideDown(1000, function () {
-                setTimeout(function () {
-                    $el.not(":animated").slideUp(2000);
-                }, 2000);
-            });
+            $("#" + editAlert).show().parent('.alert').addClass('alert-info').removeClass('content-box');
         }
     }
 
@@ -2252,23 +2234,6 @@ class UIBootgrid {
 
         $.when.apply(null, batches.map(b => ajaxCall(`${this.crud.toggle}${b.join(",")}/${on}`, {}, null)))
             .done(() => (this._reload(true), this.showSaveAlert(event)));
-    }
-
-    _debounce(f, delay = 50, ensure = true) {
-        // debounce to prevent a flood of calls in a short time
-        let lastCall = Number.NEGATIVE_INFINITY;
-        let wait;
-        let handle;
-        return (...args) => {
-            wait = lastCall + delay - Date.now();
-            clearTimeout(handle);
-            if (wait <= 0 || ensure) {
-                handle = setTimeout(() => {
-                    f(...args);
-                    lastCall = Date.now();
-                }, wait);
-            }
-        };
     }
 
     getTable() {

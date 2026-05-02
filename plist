@@ -656,6 +656,7 @@
 /usr/local/opnsense/mvc/app/models/OPNsense/Base/FieldTypes/UpdateOnlyTextField.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Base/FieldTypes/UrlField.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Base/FieldTypes/VirtualIPField.php
+/usr/local/opnsense/mvc/app/models/OPNsense/Base/Menu/MenuContainer.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Base/Menu/MenuInitException.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Base/Menu/MenuItem.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Base/Menu/MenuSystem.php
@@ -768,6 +769,7 @@
 /usr/local/opnsense/mvc/app/models/OPNsense/Firewall/Filter.xml
 /usr/local/opnsense/mvc/app/models/OPNsense/Firewall/Group.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Firewall/Group.xml
+/usr/local/opnsense/mvc/app/models/OPNsense/Firewall/Menu/Menu.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Firewall/Menu/Menu.xml
 /usr/local/opnsense/mvc/app/models/OPNsense/Firewall/Migrations/M1_0_0.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Firewall/Migrations/MFP1_0_0.php
@@ -828,6 +830,7 @@
 /usr/local/opnsense/mvc/app/models/OPNsense/Interfaces/Lagg.xml
 /usr/local/opnsense/mvc/app/models/OPNsense/Interfaces/Loopback.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Interfaces/Loopback.xml
+/usr/local/opnsense/mvc/app/models/OPNsense/Interfaces/Menu/Menu.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Interfaces/Menu/Menu.xml
 /usr/local/opnsense/mvc/app/models/OPNsense/Interfaces/Migrations/SET1_0_0.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Interfaces/Neighbor.php
@@ -881,6 +884,7 @@
 /usr/local/opnsense/mvc/app/models/OPNsense/Radvd/Migrations/M1_0_0.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Radvd/Radvd.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Radvd/Radvd.xml
+/usr/local/opnsense/mvc/app/models/OPNsense/Routes/Migrations/M1_0_1.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Routes/Route.php
 /usr/local/opnsense/mvc/app/models/OPNsense/Routes/Route.xml
 /usr/local/opnsense/mvc/app/models/OPNsense/Routing/FieldTypes/GatewayField.php
@@ -1099,6 +1103,7 @@
 /usr/local/opnsense/mvc/tests/app/models/OPNsense/Base/FieldTypes/PortFieldTest.php
 /usr/local/opnsense/mvc/tests/app/models/OPNsense/Base/FieldTypes/ProtocolFieldTest.php
 /usr/local/opnsense/mvc/tests/app/models/OPNsense/Base/FieldTypes/TextFieldTest.php
+/usr/local/opnsense/mvc/tests/app/models/OPNsense/Base/FieldTypes/UpdateOnlyTextFieldTest.php
 /usr/local/opnsense/mvc/tests/app/models/OPNsense/Base/FieldTypes/VirtualIPFieldTest.php
 /usr/local/opnsense/mvc/tests/app/models/OPNsense/Base/FieldTypes/VirtualIPFieldTest/config.xml
 /usr/local/opnsense/mvc/tests/app/models/OPNsense/Dnsmasq/FieldTypes/HostnameFieldTest.php
@@ -1209,7 +1214,6 @@
 /usr/local/opnsense/scripts/firmware/register.php
 /usr/local/opnsense/scripts/firmware/reinstall.sh
 /usr/local/opnsense/scripts/firmware/remove.sh
-/usr/local/opnsense/scripts/firmware/repos/FreeBSD.php
 /usr/local/opnsense/scripts/firmware/repos/OPNsense.php
 /usr/local/opnsense/scripts/firmware/repos/README
 /usr/local/opnsense/scripts/firmware/resync.sh

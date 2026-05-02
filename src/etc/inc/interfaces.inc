@@ -188,13 +188,7 @@ function interfaces_wlan_clone($device)
 
 function interfaces_bridge_configure($device)
 {
-    global $config;
-
-    if (!isset($config['bridges']['bridged'])) {
-        return null;
-    }
-
-    foreach ($config['bridges']['bridged'] as $bridge) {
+    foreach (config_read_array('bridges', 'bridged', false) as $bridge) {
         if ($bridge['bridgeif'] == $device) {
             return _interfaces_bridge_configure($bridge);
         }
@@ -407,13 +401,7 @@ function _interfaces_lagg_configure($lagg)
 
 function interfaces_gre_configure($device)
 {
-    global $config;
-
-    if (!isset($config['gres']['gre'])) {
-        return null;
-    }
-
-    foreach ($config['gres']['gre'] as $gre) {
+    foreach (config_read_array('gres', 'gre', false) as $gre) {
         if ($gre['greif'] == $device) {
             return _interfaces_gre_configure($gre);
         }
@@ -489,13 +477,7 @@ function _interfaces_gre_configure($gre)
 
 function interfaces_gif_configure($device)
 {
-    global $config;
-
-    if (!isset($config['gifs']['gif'])) {
-        return null;
-    }
-
-    foreach ($config['gifs']['gif'] as $gif) {
+    foreach (config_read_array('gifs', 'gif', false) as $gif) {
         if ($gif['gifif'] == $device) {
             return _interfaces_gif_configure($gif);
         }
@@ -3542,7 +3524,7 @@ function interface_parent_devices($device, $as_interface = false)
             }
         }
     } elseif (strstr($device, 'bridge')) {
-        foreach (config_read_array('bridges', 'bridged') as $bridge) {
+        foreach (config_read_array('bridges', 'bridged', false) as $bridge) {
             if ($device == $bridge['bridgeif']) {
                 foreach (explode(',', $bridge['members'] ?? '') as $member) {
                     /* bridge stores members as configured interfaces */
@@ -3650,7 +3632,7 @@ function interfaces_restart_by_device($verbose, $devices, $reconfigure = true)
 
 function link_interface_to_bridge($interface, $attach_device = null, $ifconfig_details = [/* must be set for attach to work */])
 {
-    foreach (config_read_array('bridges', 'bridged') as $bridge) {
+    foreach (config_read_array('bridges', 'bridged', false) as $bridge) {
         if (!in_array($interface, explode(',', $bridge['members'] ?? ''))) {
             continue;
         }
@@ -3689,7 +3671,7 @@ function link_interface_to_gre($interface, $update = false, $family = null)
 {
     $result = [];
 
-    foreach (config_read_array('gres', 'gre') as $gre) {
+    foreach (config_read_array('gres', 'gre', false) as $gre) {
         $parent = explode('_vip', $gre['if'])[0];
         if (is_ipaddr($parent)) {
             foreach (config_read_array('virtualip', 'vip', false) as $vip) {
@@ -3724,7 +3706,7 @@ function link_interface_to_gif($interface, $update = false, $family = null)
 {
     $result = [];
 
-    foreach (config_read_array('gifs', 'gif') as $gif) {
+    foreach (config_read_array('gifs', 'gif', false) as $gif) {
         if (explode('_vip', $gif['if'])[0] != $interface) {
             continue;
         } elseif ($family == 4 && !is_ipaddrv4($gif['remote-addr'])) {

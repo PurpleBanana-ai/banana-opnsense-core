@@ -1,6 +1,6 @@
 <model>
     <mount>//OPNsense/Kea/dhcp6</mount>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <description>Kea DHCPv6 configuration</description>
     <items>
         <general>
@@ -18,6 +18,19 @@
                 <Default>4000</Default>
                 <Required>Y</Required>
             </valid_lifetime>
+            <mac_sources type="OptionField">
+                <Default>ipv6-link-local</Default>
+                <Required>Y</Required>
+                <OptionValues>
+                    <duid>duid</duid>
+                    <ipv6-link-local>ipv6-link-local</ipv6-link-local>
+                    <client-link-addr-option>client-link-addr-option</client-link-addr-option>
+                    <remote-id>remote-id</remote-id>
+                    <docsis-cmts>docsis-cmts</docsis-cmts>
+                    <docsis-modem>docsis-modem</docsis-modem>
+                </OptionValues>
+                <Multiple>Y</Multiple>
+            </mac_sources>
             <fwrules type="BooleanField">
                 <Required>Y</Required>
                 <Default>1</Default>
@@ -127,6 +140,9 @@
                         </check001>
                     </Constraints>
                 </ddns_forward_zone>
+                <ddns_reverse_zone type="HostnameField">
+                    <IpAllowed>N</IpAllowed>
+                </ddns_reverse_zone>
                 <ddns_qualifying_suffix type="HostnameField"/>
                 <ddns_dns_server type="NetworkField">
                     <NetMaskAllowed>N</NetMaskAllowed>
@@ -140,6 +156,7 @@
                         </check001>
                     </Constraints>
                 </ddns_dns_server>
+                <ddns_dns_port type="PortField"/>
                 <ddns_domain_key_name type="TextField">
                     <Constraints>
                         <check001>
@@ -181,6 +198,9 @@
                         </check001>
                     </Constraints>
                 </ddns_domain_key_algorithm>
+                <ddns_override_no_update type="BooleanField"/>
+                <ddns_override_client_update type="BooleanField"/>
+                <ddns_update_on_renew type="BooleanField"/>
                 <description type="DescriptionField"/>
             </subnet6>
         </subnets>
@@ -212,6 +232,17 @@
                         </check001>
                     </Constraints>
                 </ip_address>
+                <prefix type="NetworkField">
+                    <AddressFamily>ipv6</AddressFamily>
+                    <NetMaskRequired>Y</NetMaskRequired>
+                    <ValidationMessage>The prefix length must be in CIDR format (e.g., fd80::/64).</ValidationMessage>
+                    <Constraints>
+                        <check001>
+                            <ValidationMessage>Duplicate entry exists.</ValidationMessage>
+                            <type>UniqueConstraint</type>
+                        </check001>
+                    </Constraints>
+                </prefix>
                 <duid type="TextField">
                     <Mask>/^(?:[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2})+)$/</Mask>
                     <ValidationMessage>Value must be a colon-separated hexadecimal sequence (e.g., 01:02:f3).</ValidationMessage>
