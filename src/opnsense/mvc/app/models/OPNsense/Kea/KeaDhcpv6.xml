@@ -12,12 +12,20 @@
             <interfaces type="InterfaceField">
                 <Multiple>Y</Multiple>
             </interfaces>
-            <service_sockets_max_retries type="IntegerField"/>
-            <service_sockets_retry_wait_time type="IntegerField"/>
+            <service_sockets_max_retries type="IntegerField">
+                <MinimumValue>0</MinimumValue>
+            </service_sockets_max_retries>
+            <service_sockets_retry_wait_time type="IntegerField">
+                <MinimumValue>0</MinimumValue>
+            </service_sockets_retry_wait_time>
             <valid_lifetime type="IntegerField">
+                <MinimumValue>0</MinimumValue>
                 <Default>4000</Default>
                 <Required>Y</Required>
             </valid_lifetime>
+            <decline_probation_period type="IntegerField">
+                <MinimumValue>0</MinimumValue>
+            </decline_probation_period>
             <mac_sources type="OptionField">
                 <Default>ipv6-link-local</Default>
                 <Required>Y</Required>
@@ -84,6 +92,9 @@
                         </check001>
                     </Constraints>
                 </subnet>
+                <valid_lifetime type="IntegerField">
+                    <MinimumValue>0</MinimumValue>
+                </valid_lifetime>
                 <allocator type="OptionField">
                     <BlankDesc>Default</BlankDesc>
                     <OptionValues>
@@ -201,6 +212,14 @@
                 <ddns_override_no_update type="BooleanField"/>
                 <ddns_override_client_update type="BooleanField"/>
                 <ddns_update_on_renew type="BooleanField"/>
+                <ddns_conflict_resolution_mode type="OptionField">
+                    <BlankDesc>check-with-dhcid (default)</BlankDesc>
+                    <OptionValues>
+                        <no-check-with-dhcid>no-check-with-dhcid</no-check-with-dhcid>
+                        <check-exists-with-dhcid>check-exists-with-dhcid</check-exists-with-dhcid>
+                        <no-check-without-dhcid>no-check-without-dhcid</no-check-without-dhcid>
+                    </OptionValues>
+                </ddns_conflict_resolution_mode>
                 <description type="DescriptionField"/>
             </subnet6>
         </subnets>
@@ -219,6 +238,9 @@
                         <check001>
                             <reference>duid.check001</reference>
                         </check001>
+                        <check002>
+                            <reference>hw_address.check001</reference>
+                        </check002>
                     </Constraints>
                     <Required>Y</Required>
                 </subnet>

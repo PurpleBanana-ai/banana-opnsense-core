@@ -64,9 +64,9 @@ class KeaDhcpv6 extends BaseModel
                 $messages->appendMessage(new Message(gettext("Either an IP address or a Prefix should be specified."), $key . ".ip_address"));
             }
             if (!$reservation->duid->isEmpty() && !$reservation->hw_address->isEmpty()) {
-                $messages->appendMessage(new Message(gettext("Either a DUID or an Ether address should be specified, but not both"), $key . ".duid"));
+                $messages->appendMessage(new Message(gettext("Either a DUID or an MAC address should be specified, but not both"), $key . ".duid"));
             } elseif ($reservation->duid->isEmpty() && $reservation->hw_address->isEmpty()) {
-                $messages->appendMessage(new Message(gettext("Either a DUID or an Ether address should be specified."), $key . ".duid"));
+                $messages->appendMessage(new Message(gettext("Either a DUID or an MAC address should be specified."), $key . ".duid"));
             }
         }
         // validate changed subnets
@@ -135,16 +135,13 @@ class KeaDhcpv6 extends BaseModel
                 !$this->general->interfaces->isEmpty();
     }
 
-    /**
-     *
-     */
     private function getConfigPhysicalInterfaces()
     {
         $result = [];
-        $cfg = Config::getInstance()->object();
-        foreach ($this->general->interfaces->getValues() as $if) {
-            if (isset($cfg->interfaces->$if) && !empty($cfg->interfaces->$if->if)) {
-                $result[] = (string)$cfg->interfaces->$if->if;
+        foreach ($this->general->interfaces->getValues() as $interface) {
+            $device = Util::getRealInterface($interface, 'inet6');
+            if (!empty($device)) {
+                $result[] = $device;
             }
         }
         return $result;
@@ -161,7 +158,6 @@ class KeaDhcpv6 extends BaseModel
 
     private function getConfigSubnets($ddns_enabled = false)
     {
-        $cfg = Config::getInstance()->object();
         $result = [];
         $subnet_id = 1;
         foreach ($this->subnets->subnet6->iterateItems() as $subnet_uuid => $subnet) {
@@ -173,9 +169,13 @@ class KeaDhcpv6 extends BaseModel
                 'pd-pools' => [],
                 'reservations' => []
             ];
-            $if = $subnet->interface->getValue();
-            if (isset($cfg->interfaces->$if) && !empty($cfg->interfaces->$if->if)) {
-                $record['interface'] = (string)$cfg->interfaces->$if->if;
+            /* add valid-lifetime at this level if given */
+            if ($subnet->valid_lifetime->isSet()) {
+                $record['valid-lifetime'] = $subnet->valid_lifetime->asInt();
+            }
+            $device = Util::getRealInterface($subnet->interface->getValue(), 'inet6');
+            if (!empty($device)) {
+                $record['interface'] = $device;
             }
             if (!$subnet->{'pd-allocator'}->isEmpty()) {
                 $record['pd-allocator'] = $subnet->{'pd-allocator'}->getValue();
@@ -309,6 +309,9 @@ class KeaDhcpv6 extends BaseModel
                 $record['ddns-override-no-update'] = !$subnet->ddns_override_no_update->isEmpty();
                 $record['ddns-override-client-update'] = !$subnet->ddns_override_client_update->isEmpty();
                 $record['ddns-update-on-renew'] = !$subnet->ddns_update_on_renew->isEmpty();
+                if (!$subnet->ddns_conflict_resolution_mode->isEmpty()) {
+                    $record['ddns-conflict-resolution-mode'] = $subnet->ddns_conflict_resolution_mode->getValue();
+                }
             }
             $result[] = $record;
         }
@@ -350,13 +353,15 @@ class KeaDhcpv6 extends BaseModel
         $cnf = [
             'Dhcp6' => [
                 'valid-lifetime' => $this->general->valid_lifetime->asInt(),
+                'decline-probation-period' => $this->general->decline_probation_period->isSet() ?
+                                              $this->general->decline_probation_period->asInt() : 600,
                 'mac-sources' => $this->general->mac_sources->getValues(),
                 'interfaces-config' => [
                     'interfaces' => $this->getConfigPhysicalInterfaces(),
                     /* socket retries are on a per-interface basis, failing to open one won't affect others */
-                    'service-sockets-max-retries' => !$this->general->service_sockets_max_retries->isEmpty() ?
+                    'service-sockets-max-retries' => $this->general->service_sockets_max_retries->isSet() ?
                                                      $this->general->service_sockets_max_retries->asInt() : 5,
-                    'service-sockets-retry-wait-time' => !$this->general->service_sockets_retry_wait_time->isEmpty() ?
+                    'service-sockets-retry-wait-time' => $this->general->service_sockets_retry_wait_time->isSet() ?
                                                          $this->general->service_sockets_retry_wait_time->asInt() : 5000,
                 ],
                 'lease-database' => [
@@ -428,6 +433,6 @@ class KeaDhcpv6 extends BaseModel
                 'server-port' => $ddns->general->server_port->asInt(),
             ];
         }
-        File::file_put_contents($target, json_encode($cnf, JSON_PRETTY_PRINT), 0600);
+        File::file_put_contents($target, json_encode($cnf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), 0600);
     }
 }

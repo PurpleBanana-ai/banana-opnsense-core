@@ -98,15 +98,20 @@ function saveFormToEndpoint(url, formid, callback_ok, disable_dialog, callback_f
                     });
                 }
 
-                if ( callback_fail !== undefined ) {
+                if (callback_fail !== undefined) {
                     // execute callback function
                     callback_fail(data);
                 }
-            } else if ( callback_ok !== undefined ) {
-                // execute callback function
-                callback_ok(data);
+            } else {
+                // trigger base apply button alert
+                $(document).trigger('settings-changed');
+
+                if (callback_ok !== undefined) {
+                    // execute callback function
+                    callback_ok(data);
+                }
             }
-        } else if ( callback_fail !== undefined ) {
+        } else if (callback_fail !== undefined) {
             callback_fail(data);
         }
     });
@@ -647,6 +652,10 @@ $.fn.SimpleActionButton = function (params) {
 
         let hideCheckTimeout;
 
+        $(document).on("settings-changed", function () {
+            $('#change_message_base_form').show().parent('.alert').addClass('alert-info').removeClass('content-box');
+        });
+
         this_button.on('click', function () {
             const icon = this_button.find('.reload_progress');
 
@@ -684,7 +693,7 @@ $.fn.SimpleActionButton = function (params) {
                         setIcon(icon, 'fa fa-check fa-spinner fa-pulse', 'fa fa-spinner fa-pulse');
                     } else {
                         setIcon(icon, 'fa fa-spinner fa-pulse', 'fa fa-check');
-                        $("#" + this_button.data('message-id')).hide();
+                        $("#change_message_base_form").hide();
                         this_button.parent('.alert').addClass('content-box').removeClass('alert-info');
 
                         hideCheckTimeout = setTimeout(function () {

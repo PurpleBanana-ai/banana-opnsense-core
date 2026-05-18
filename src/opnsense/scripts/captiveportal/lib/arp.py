@@ -52,7 +52,7 @@ class ARP(object):
             )
 
             out = ujson.loads(p.stdout)
-        except (subprocess.CalledProcessError, ujson.JSONDecodeError) as e:
+        except (FileNotFoundError, subprocess.CalledProcessError, ujson.JSONDecodeError) as e:
             syslog.syslog(syslog.LOG_ERR, f"""
                 unable to parse list_hosts.py output:\n
                 stdout={getattr(e, 'stdout', None)}\n
@@ -88,7 +88,9 @@ class ARP(object):
                 entry["first_seen"] = datetime.strptime(row[4], "%Y-%m-%d %H:%M:%S")
                 entry["last_seen"]  = datetime.strptime(row[5], "%Y-%m-%d %H:%M:%S")
 
-            self._table[ip] = entry
+            # only first one is relevant
+            if not ip in self._table:
+                self._table[ip] = entry
 
     def get_by_ipaddress(self, address):
         return self._table.get(address, None)
