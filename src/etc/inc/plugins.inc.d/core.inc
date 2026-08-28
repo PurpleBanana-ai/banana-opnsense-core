@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (C) 2018-2025 Deciso B.V.
+ * Copyright (C) 2018-2026 Deciso B.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,7 +31,7 @@ function core_services()
     $services = [];
 
     $services[] = [
-        'description' => gettext('System Configuration Daemon'),
+        'description' => gettext('Configd'),
         'pidfile' => '/var/run/configd.pid',
         'mwexec' => [
             'restart' => ['/usr/local/etc/rc.d/configd restart'],
@@ -80,7 +80,7 @@ function core_services()
     ];
 
     $services[] = [
-        'description' => gettext('Syslog-ng Daemon'),
+        'description' => gettext('Syslog-ng'),
         'php' => [
             'start' => ['system_syslog_start'],
             'restart' => ['system_syslog_start'],
@@ -90,6 +90,46 @@ function core_services()
         ],
         'pidfile' => '/var/run/syslog-ng.pid',
         'name' => 'syslog-ng',
+    ];
+
+    $services[] = [
+        'description' => gettext('Kernel modules'),
+        'php' => [
+            'restart' => ['system_kernel_configure'],
+        ],
+        'name' => 'kernel',
+        'nocheck' => true,
+        'noshow' => true,
+    ];
+
+    $services[] = [
+        'description' => gettext('Powerd'),
+        'php' => [
+            'restart' => ['system_powerd_configure'],
+        ],
+        'name' => 'powerd',
+        'nocheck' => true,
+        'noshow' => true,
+    ];
+
+    $services[] = [
+        'description' => gettext('Timezone'),
+        'php' => [
+            'restart' => ['system_timezone_configure'],
+        ],
+        'name' => 'timezone',
+        'nocheck' => true,
+        'noshow' => true,
+    ];
+
+    $services[] = [
+        'description' => gettext('Hostname'),
+        'php' => [
+            'restart' => ['system_hostname_configure'],
+        ],
+        'name' => 'hostname',
+        'nocheck' => true,
+        'noshow' => true,
     ];
 
     return $services;
@@ -185,7 +225,7 @@ function core_devices()
     }
 
     $devices[] = [
-        'pattern' => '^cua|^l2tp|^ppp|^pptp', /* XXX ^cua likely doesn't match since it's a /dev node */
+        'pattern' => '^l2tp|^ppp|^pptp', /* includes ^pppoe */
         'names' => $ppp_names,
         'volatile' => true,
         'type' => 'ppp',
@@ -202,9 +242,11 @@ function core_devices()
     }
 
     $devices[] = [
+        'function' => 'interfaces_vlan_configure',
         'pattern' => '_vlan|^vlan|^qinq',
         'names' => $vlan_names,
         'volatile' => true,
+        'reload' => false,
         'type' => 'vlan',
     ];
 
@@ -219,8 +261,9 @@ function core_devices()
     }
 
     /* also need to find implied clones that do not have explicit cloneif set */
+    /* XXX this may be obsolete / fixable in a migration now */
     foreach (legacy_config_get_interfaces() as $id => $conf) {
-        if (isset($conf['wireless']) && !isset($wlan_names[$conf['if']])) {
+        if (strpos($conf['if'], '_wlan') !== false && !isset($wlan_names[$conf['if']])) {
             $wlan_names[$conf['if']] = [
                 'descr' => sprintf('%s (%s)', $conf['if'], gettext('wireless clone')),
                 'ifdescr' => gettext('wireless clone'),
@@ -266,19 +309,11 @@ function core_cron()
     /**
      * rrd graph collector, only schedule execution when enabled
      */
-    if (isset($config['rrd']['enable'])) {
+    if (!(new \OPNsense\Diagnostics\SystemHealth())->enabled->isEmpty()) {
         $jobs[]['autocron'] = [
             '/usr/local/bin/flock -n -E 0 -o /tmp/updaterrd.lock /usr/local/opnsense/scripts/health/updaterrd.php',
             '*'
         ];
-    }
-
-    if (!empty($config['system']['rrdbackup']) && $config['system']['rrdbackup'] > 0) {
-        $jobs[]['autocron'] = ['/usr/local/etc/rc.syshook.d/backup/20-rrd', '0', '*/' . $config['system']['rrdbackup']];
-    }
-
-    if (!empty($config['system']['netflowbackup']) && $config['system']['netflowbackup'] > 0) {
-        $jobs[]['autocron'] = ['/usr/local/etc/rc.syshook.d/backup/20-netflow', '0', '*/' . $config['system']['netflowbackup']];
     }
 
     foreach ((new OPNsense\Backup\BackupFactory())->listProviders() as $classname => $provider) {
@@ -388,9 +423,10 @@ function core_xmlrpc_sync()
 function core_configure()
 {
     return [
+        'bootup' => ['system_powerd_configure'],
+        'crl' => ['core_trust_crl'],
         /* XXX these are all specialized and try to avoid extra script use */
         'cache_flush' => ['system_cache_flush'],
-        'crl' => ['core_trust_crl'],
         'dns_reload' => ['system_resolver_configure'],
         'firmware_reload' => ['system_firmware_configure'],
         'networking_reload' => [

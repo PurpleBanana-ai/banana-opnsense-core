@@ -75,7 +75,7 @@ export default class Interfaces extends BaseTableWidget {
                 </div>
             `).prop('outerHTML'));
 
-            let media = (!'media' in intf_data ? intf_data.cell_mode : intf_data.media) ?? '';
+            let media = (!('media' in intf_data) ? intf_data.cell_mode : intf_data.media) ?? '';
             row.push($(`
                 <div class="interface-info-detail">
                     <div>${media}</div>
@@ -102,12 +102,7 @@ export default class Interfaces extends BaseTableWidget {
     }
 
     onWidgetResize(elem, width, height) {
-        if (width > 450) {
-            $('.interface-info-detail').parent().show();
-        } else {
-            $('.interface-info-detail').parent().hide();
-        }
-
+        $('.interface-info-detail').parent().toggle(width > 450);
         return super.onWidgetResize(elem, width, height);
     }
 }

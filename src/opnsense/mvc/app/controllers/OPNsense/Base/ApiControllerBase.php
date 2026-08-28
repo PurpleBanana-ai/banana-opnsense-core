@@ -40,6 +40,38 @@ use OPNsense\Mvc\Security;
  */
 class ApiControllerBase extends ControllerRoot
 {
+    /**
+     * When the user-config-readonly privilege is set, raise an error
+     */
+    protected function throwReadOnly()
+    {
+        if ((new ACL())->hasPrivilege($this->getUserName(), 'user-config-readonly')) {
+            throw new UserException(
+                sprintf(
+                    gettext("User %s denied for write access (user-config-readonly set)"),
+                    $this->getUserName()
+                ),
+                gettext("General access")
+            );
+        }
+    }
+
+    /**
+     * When the page-all privilege is not set, raise an error
+     */
+    protected function throwNotFullAdmin()
+    {
+        if (!(new ACL())->hasPrivilege($this->getUserName(), 'page-all')) {
+            $msg = gettext(
+                "User %s denied for write access due to the sensitive nature of this component (requires page-all priv)"
+            );
+            throw new UserException(
+                sprintf($msg, $this->getUserName()),
+                gettext("General access")
+            );
+        }
+    }
+
     /***
      * Recordset (array in array) search wrapper
      * @param string $path path to search, relative to this model
@@ -163,10 +195,10 @@ class ApiControllerBase extends ControllerRoot
         $records = is_array($records) ? $records : [];
         $stream = fopen('php://temp', 'rw+');
         if (isset($records[0])) {
-            fputcsv($stream, array_keys($records[0]), $separator);
+            fputcsv($stream, array_keys($records[0]), $separator, "\"", "\\");
         }
         foreach ($records as $record) {
-            fputcsv($stream, $record, $separator);
+            fputcsv($stream, $record, $separator, "\"", "\\");
         }
         foreach ($headers as $header) {
             $parts = explode(':', $header, 2);
@@ -369,5 +401,16 @@ class ApiControllerBase extends ControllerRoot
         }
 
         return $this->response->send();
+    }
+
+    /**
+     * run interface registration check and cache invalidation
+     */
+    public function runInterfaceRegistration()
+    {
+        $backend = new Backend();
+
+        $backend->configdRun('interface invoke registration');
+        $backend->configdRun('!interface list assign-opts', false, 20);
     }
 }

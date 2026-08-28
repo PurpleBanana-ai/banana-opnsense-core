@@ -46,6 +46,7 @@ class PortField extends BaseListField
         'avt-profile-1' => 5004,
         'cvsup' => 5999,
         'domain' => 53,
+        'domain-s' => 853,
         'ftp' => 21,
         'hbci' => 3000,
         'http' => 80,
@@ -58,6 +59,7 @@ class PortField extends BaseListField
         'isakmp' => 500,
         'l2f' => 1701,
         'ldap' => 389,
+        'ldaps' => 636,
         'microsoft-ds' => 445,
         'ms-streaming' => 1755,
         'ms-wbt-server' => 3389,
@@ -76,11 +78,13 @@ class PortField extends BaseListField
         'radius-acct' => 1813,
         'rfb' => 5900,
         'sip' => 5060,
+        'sip-tls' => 5061,
         'smtp' => 25,
         'snmp' => 161,
         'snmptrap' => 162,
         'ssh' => 22,
         'submission' => 587,
+        'submissions' => 465,
         'telnet' => 23,
         'teredo' => 3544,
         'tftp' => 69,
@@ -226,28 +230,56 @@ class PortField extends BaseListField
         if ($this->enableRanges) {
             // add valid ranges to options
             foreach (explode(",", $this->internalValue) as $data) {
-                if (strpos($data, "-") !== false) {
-                    $tmp = explode('-', $data);
-                    if (count($tmp) == 2) {
-                        if (
-                            filter_var(
-                                $tmp[0],
-                                FILTER_VALIDATE_INT,
-                                ['options' => ['min_range' => 1, 'max_range' => 65535]]
-                            ) !== false &&
-                            filter_var(
-                                $tmp[1],
-                                FILTER_VALIDATE_INT,
-                                ['options' => ['min_range' => 1, 'max_range' => 65535]]
-                            ) !== false &&
-                            $tmp[0] < $tmp[1]
-                        ) {
-                            $this->internalOptionList[$data] = $data;
-                        }
-                    }
+                if (strpos($data, "-") === false) {
+                    continue;
                 }
+
+                $tmp = explode('-', $data);
+
+                if (count($tmp) != 2) {
+                    continue;
+                }
+
+                // Reject any whitespaces
+                if ($tmp[0] !== trim($tmp[0]) || $tmp[1] !== trim($tmp[1])) {
+                    continue;
+                }
+
+                if (
+                    filter_var(
+                        $tmp[0],
+                        FILTER_VALIDATE_INT,
+                        ['options' => ['min_range' => 1, 'max_range' => 65535]]
+                    ) === false ||
+                    filter_var(
+                        $tmp[1],
+                        FILTER_VALIDATE_INT,
+                        ['options' => ['min_range' => 1, 'max_range' => 65535]]
+                    ) === false ||
+                    $tmp[0] >= $tmp[1]
+                ) {
+                    continue;
+                }
+
+                $this->internalOptionList[$data] = $data;
             }
         }
         return parent::getValidators();
+    }
+
+    /**
+     * @return string
+     */
+    public function normalizedPort()
+    {
+        /* XXX this does not support multiple values */
+        $value = $this->getValue();
+
+        $known = self::getWellKnown($value);
+        if (!empty($known)) {
+            $value = array_shift($known);
+        }
+
+        return $value;
     }
 }

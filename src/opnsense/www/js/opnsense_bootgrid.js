@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 Deciso B.V.
+ * Copyright (C) 2025-2026 Deciso B.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -454,6 +454,7 @@ class UIBootgrid {
 
         if (bootGridOptions?.disableScroll ?? false) {
             this.options.disableScroll = true;
+            this.compatOptions['height'] = false;
         }
 
         this.tabulatorOptions = compatOptions.tabulatorOptions ??= {};
@@ -504,7 +505,8 @@ class UIBootgrid {
                     minWidth: data.minWidth || 80,
                     maxWidth: data.maxWidth ?? null,
                     editable: false,
-                    sortable: data.sortable ?? true
+                    sortable: data.sortable ?? true,
+                    selectable: data.selectable ?? true,
                 }
             }
         }
@@ -538,10 +540,11 @@ class UIBootgrid {
                     title: field.label,
                     resizable: false,
                     sequence: field.sequence ?? null,
-                    frozen: true,
+                    // If a touchscreen is detected, unfreeze commands (most likely small device/tablet)
+                    frozen: !window.matchMedia('(any-pointer: coarse)').matches,
                     headerSort: false,
                     headerHozAlign: "center",
-                    // hozAlign:  'center',
+                    selectable: true
                 };
 
                 if (!field.width) {
@@ -572,6 +575,8 @@ class UIBootgrid {
                     headerSort: this.options.sorting && field.sortable !== false,
                     cssClass: this.options.responsive ? 'opnsense-bootgrid-responsive' : '',
                     variableHeight: true,
+                    userDefinedWidth: false,
+                    selectable: field.selectable,
                 };
             }
 
@@ -580,6 +585,7 @@ class UIBootgrid {
                 col['minWidth'] = field.width;
                 col['maxWidth'] = field.width;
             } else if (field.width) {
+                col['userDefinedWidth'] = true;
                 col['width'] = field.width;
             } else {
                 if (field.minWidth) {
@@ -648,6 +654,10 @@ class UIBootgrid {
     }
 
     _onDimensionChange() {
+        if (this.$maximizeModal) {
+            return;
+        }
+
         const scrollbarGutterOffset = 16;
         const defaultHeight = 120;
 
@@ -673,7 +683,6 @@ class UIBootgrid {
 
         if (Math.abs(currentTotalHeight - nextHeight) > 1) {
             this.table.setHeight(nextHeight);
-            this.table.redraw();
         }
     }
 
@@ -741,11 +750,14 @@ class UIBootgrid {
         });
 
         const rememberTree = (row, open) => {
-            const id = row.getData()[this.options.datakey];
-            if (!id) return;
+            const data = row.getData();
+            const id = data[this.options.datakey];
+            // maintain scroll position regardless of persistence state
+            this._maintainScrollPosition(this.scrollPos);
+            if (!data._persistence || !id) return;
             open ? this.rememberedTreeIds.add(id) : this.rememberedTreeIds.delete(id);
             localStorage.setItem(this.treeStorageKey, JSON.stringify([...this.rememberedTreeIds]));
-            this._maintainScrollPosition(this.scrollPos);
+            this._setPersistence(true);
         };
 
         this.table.on('dataTreeRowExpanded',  (row) => rememberTree(row, true));
@@ -805,6 +817,7 @@ class UIBootgrid {
 
         // Triggers to activate persistence
         this.table.on('columnResized', (column) => {
+            column.getDefinition().userDefinedWidth = true;
             this._setPersistence(true);
         });
         this.table.on('headerClick', (e, column) => {
@@ -831,23 +844,28 @@ class UIBootgrid {
                 const pageObserver = new ResizeObserver(debounce((entries) => {
                     for (let entry of entries) {
                         const topDistance = document.getElementById(this.id).getBoundingClientRect().top;
-                        this.pageHeight = entry.contentRect.height - topDistance;
+                        let newHeight = entry.contentRect.height - topDistance;
                         if (this.options.bottomReserveElement) {
-                            this.pageHeight -= this.options.bottomReserveElement.getBoundingClientRect().height;
+                            newHeight -= this.options.bottomReserveElement.getBoundingClientRect().height;
                         }
-                        this._onDimensionChange();
+
+                        if (this.pageHeight != newHeight) {
+                            this.pageHeight = newHeight;
+                            this._onDimensionChange();
+                        }
                     }
                 }));
                 pageObserver.observe(pageTarget);
 
                 const tableObserver = new ResizeObserver(debounce((entries) => {
                     for (let entry of entries) {
-                        this.tableHeight = entry.contentRect.height;
-                        this._onDimensionChange();
+                        if (this.tableHeight != entry.contentRect.height) {
+                            this.tableHeight = entry.contentRect.height;
+                            this._onDimensionChange();
+                        }
                     }
                 }));
                 tableObserver.observe(tableTarget);
-
             }
 
             // make sure we redraw the table as it enters the viewport (multiple tabbed grids)
@@ -869,6 +887,10 @@ class UIBootgrid {
 
         this.table.on('scrollVertical', (top) => {
             this.scrollPos = top;
+        });
+        this.table.on('renderComplete', (top) => {
+            /* tooltips may stick, remove them on redraw */
+            $("div.tooltip.fade.top.in").remove();
         });
     }
 
@@ -914,7 +936,7 @@ class UIBootgrid {
 
         if (this.table.getData().length == 0 && !this.loading) {
             this.dataAvailable = false;
-            this._getPlaceholder().html(this.translations.noresultsfound);
+            this._getPlaceholder().text(this.translations.noresultsfound);
         } else {
             this.dataAvailable = true;
         }
@@ -1067,6 +1089,68 @@ class UIBootgrid {
         }
     }
 
+    _showMaximized() {
+        if (this.$maximizeModal) {
+            this.$maximizeModal.modal('hide');
+            return;
+        }
+
+        const $header = $(`#${this.id}-header`);
+        const $table = this.$element;
+        const $placeholder = $('<span>').insertBefore($header);
+        const $modal = $('<div class="modal fade bootgrid-maximize-modal" role="dialog">');
+        const $maximizeBtn = $(`#${this.id}-maximize`);
+        $modal.append(`
+            <div class="modal-backdrop fade in"></div>
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-body"></div>
+                </div>
+            </div>
+        `);
+
+        $modal.find('.modal-content').css({
+            'margin-top': $("header.page-head").outerHeight(),
+            'margin-bottom': 0,
+            'margin-left': 0,
+            'margin-right': 0,
+            'height': $("#navigation").outerHeight() ||
+                // Mobile navigation collapses below 768px and reports 0 height.
+                window.innerHeight - $("header.page-head").outerHeight()
+        });
+
+        /* ensure model is "stacked" properly to allow the next dialog to overlay it */
+        $(`#${this.id}`).after($modal);
+
+        this.$maximizeModal = $modal;
+        $modal.find('.modal-body').append($header, $table);
+        $maximizeBtn.attr({
+            title: this.translations.minimizeGrid,
+            'aria-label': this.translations.minimizeGrid
+        }).find('.icon').removeClass('fa-expand').addClass('fa-xmark');
+
+        $modal.one('shown.bs.modal', () => {
+            this.table.setHeight(false);
+            $table.css({height: '', minHeight: '', maxHeight: ''});
+            $table.find('.tabulator-tableholder').css({height: '', maxHeight: ''});
+            this.table.redraw(true);
+        });
+
+        $modal.one('hidden.bs.modal', () => {
+            $placeholder.after($header, $table).remove();
+            $maximizeBtn.attr({
+                title: this.translations.maximizeGrid,
+                'aria-label': this.translations.maximizeGrid
+            }).find('.icon').removeClass('fa-xmark').addClass('fa-expand');
+            this.$maximizeModal.remove();
+            this.$maximizeModal = null;
+            this._onDimensionChange();
+            this.table.redraw(true);
+        });
+
+        $modal.modal({ backdrop: 'static', keyboard: false });
+    }
+
     _renderActionBar() {
         if (!this.options.navigation) {
             return;
@@ -1151,8 +1235,8 @@ class UIBootgrid {
         // Reset button
         if (this.options.resetButton) {
             let $resetBtn = $(`
-                <button id="${this.id}-reset" class="btn btn-default" type="button"
-                        title="${this.persistence ? this.translations.resetGrid : ''}">
+                <button id="${this.id}-reset" class="btn btn-default" type="button" data-toggle="tooltip"
+                        title="${this.translations.resetGrid}">
                     <span class="icon fa-solid fa-share-square"></span>
                 </button>
             `).on('click', (e) => {
@@ -1169,6 +1253,18 @@ class UIBootgrid {
 
             $(`#${this.id}-actions-group`).append($resetBtn);
         }
+
+        // Maximize grid button
+        const $maximizeBtn = $(`
+            <button id="${this.id}-maximize" class="btn btn-default" type="button" data-toggle="tooltip"
+                    title="${this.translations.maximizeGrid}" aria-label="${this.translations.maximizeGrid}">
+                <span class="icon fa-solid fa-expand"></span>
+            </button>
+        `).on('click', () => {
+            this._showMaximized();
+        });
+
+        $(`#${this.id}-actions-group`).append($maximizeBtn);
     }
 
     _renderFooterCommands() {
@@ -1195,14 +1291,16 @@ class UIBootgrid {
             }
 
             const title = typeof command?.title === "function"
-                ? `title="${command?.title()}"`
-                : `title="${command?.title}"` ?? '';
+                ? command.title() : command?.title;
 
-            const $element = $(`
-                <button type="button" class="btn btn-xs ${key === 'add' ? 'btn-primary' : 'btn-default'} command-${key} bootgrid-tooltip" ${title}>
-                    <span class="${command.classname}"></span>
-                </button>
-            `);
+            const classname = typeof command?.classname === "function"
+                ? command.classname() : command?.classname;
+
+            const $element = $("<button>", {
+                type: "button",
+                title: title ?? "",
+                class: `btn btn-xs ${key === "add" ? "btn-primary" : "btn-default"} command-${key} bootgrid-tooltip`
+            }).append($("<span>").addClass(classname ?? ""));
 
             if (command?.primary) {
                 $commandContainer.append($element);
@@ -1231,7 +1329,7 @@ class UIBootgrid {
         for (let column of columns) {
             let definition = column.getDefinition();
 
-            if (definition?.formatter === "rowSelection") {
+            if (definition?.formatter === "rowSelection" || !definition.selectable) {
                 continue;
             }
 
@@ -1380,6 +1478,7 @@ class UIBootgrid {
 
     tabulatorDefaults() {
         return {
+            debugInvalidOptions:false,
             autoResize: false,
             index: this.options.datakey,
             renderVertical:"basic",
@@ -1391,6 +1490,17 @@ class UIBootgrid {
                 page: false,
                 columns: true,
             },
+            persistenceMode: "local",
+            persistenceWriterFunc: debounce(function(id, type, data) {
+                if (type === 'columns') {
+                    data = data.map((col) => {
+                        if (!col.userDefinedWidth) delete col.width;
+                        return col;
+                    });
+                }
+
+                localStorage.setItem(`${id}-${type}`, JSON.stringify(data));
+            }),
             movableColumns: true,
             persistenceID:this.persistenceID,
             selectableRows: false,
@@ -1439,9 +1549,9 @@ class UIBootgrid {
 
                 if (this.options.ajax) {
                     totalRows = this.paginationTotal;
+                    pageSize = this.curRowCount === true ? this.paginationTotal : this.curRowCount;
                 }
 
-                pageSize = this.curRowCount === true ? this.paginationTotal : this.curRowCount;
                 end = currentPage * pageSize;
                 start = (totalRows === 0) ? 0 : ((currentPage - 1) * pageSize) + 1;
                 end = (totalRows === 0 || end === -1 || end > totalRows) ? totalRows : end;
@@ -1619,7 +1729,8 @@ class UIBootgrid {
     * - footer: true|false whether this command should be rendered in the table footer
     * - primary: true|false only if footer: true, whether this command should be rendered as part
     *            of the primary button container (intended for primary CRUD actions)
-    * - classname: required. icon class added to the span inside the button element
+    * - classname: required. icon class added to the span inside the button element. Can be a function with
+    *               the cell object as param
     * - filter: a function that returns true or false determining if the command should be rendered.
     *           the cell object is passed in only if footer: false
     * - onRendered: a function that runs after the element including event bindings have been rendered,
@@ -1763,18 +1874,19 @@ class UIBootgrid {
                     }
 
                     if (has_option) {
-                        let title = typeof command?.title === "function"
-                            ? `title="${command?.title(cell)}"`
-                            : `title="${command?.title}"` ?? '';
+                        const title = typeof command?.title === "function"
+                            ? command?.title(cell) : command?.title;
 
-                        html.push(`
-                            <button type="button"
-                                    ${title}
-                                    class="btn btn-xs btn-default bootgrid-tooltip
-                                           command-${command.name}" data-row-id="${cell.getData()[rowid]}">
-                                <span class="${command.classname}"></span>
-                            </button>
-                        `);
+                        const classname = typeof command.classname === "function"
+                            ? command.classname(cell) : command.classname;
+
+                        const $button = $("<button>", {
+                            type: "button",
+                            title: title ?? "",
+                            class: `btn btn-xs btn-default bootgrid-tooltip command-${command.name}`
+                        }).attr("data-row-id", cell.getData()[rowid]).append($("<span>").addClass(classname));
+
+                        html.push($button[0].outerHTML);
                     }
                 });
 
@@ -1845,6 +1957,16 @@ class UIBootgrid {
                 });
 
                 return cell.getValue() ? moment(parseInt(cell.getValue())*1000).format("lll") : "";
+            },
+            isodatetime: (cell, formatterParams, onRendered) => {
+                onRendered(() => {
+                    this._onCellRendered(cell, formatterParams);
+                });
+                if (cell.getValue()) {
+                    return moment((new Date(cell.getValue())).getTime()).format("lll");
+                } else {
+                    return "";
+                }
             },
             expand: (cell, formatterParams, onRendered) => {
                 const key = `%${cell.getColumn().getDefinition().field}`;
@@ -2282,27 +2404,37 @@ class UIBootgrid {
     }
 
     setColumns(columns) {
+        let redraw = false;
         this.table.getColumns().forEach((col) => {
             const def = col.getDefinition();
             if (columns.includes(def.field)) {
+                redraw = true;
                 col._silentToggle = true;
                 col.show();
                 delete col._silentToggle;
             }
         });
-        this.table.redraw();
+
+        if (redraw) {
+            this.table.redraw();
+        }
     }
 
     unsetColumns(columns) {
+        let redraw = false;
         this.table.getColumns().forEach((col) => {
             const def = col.getDefinition();
             if (columns.includes(def.field)) {
+                redraw = true;
                 col._silentToggle = true;
                 col.hide();
                 delete col._silentToggle;
             }
         });
-        this.table.redraw();
+
+        if (redraw) {
+            this.table.redraw();
+        }
     }
 
     search(value, event) {

@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (C) 2016-2025 Deciso B.V.
+ * Copyright (C) 2016-2026 Deciso B.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -56,6 +56,7 @@ function filter_core_get_initialized_plugin_system()
     $fw = new \OPNsense\Firewall\Plugin();
     $ifdetails = legacy_interfaces_details();
     $gateways = new \OPNsense\Routing\Gateways();
+    $gatewaygroups = new \OPNsense\Routing\GatewayGroups();
     $cnfint = legacy_config_get_interfaces(["enable" => true]);
     foreach ($cnfint as $key => &$value) {
         // to set "reply-to" we need to know the gateway for our interface, let's collect it here and pass it on to
@@ -82,7 +83,7 @@ function filter_core_get_initialized_plugin_system()
     $fw->setInterfaceMapping($cnfint);
     $fw->setGateways($gateways);
     $fw->setIfconfigDetails($ifdetails);
-    $fw->setGatewayGroups($gateways->getGroups(return_gateways_status()));
+    $fw->setGatewayGroups($gatewaygroups->getActiveGroups(return_gateways_status()));
     return $fw;
 }
 
@@ -169,35 +170,28 @@ function filter_core_get_port_alias($aliasname, $aliases = [], $aliasObject = nu
     return $response;
 }
 
-
 /**
- * Collect vpn networks for outbound rules
+ * return automatic source NAT data
  */
-function filter_core_get_default_nat_outbound_networks()
+function filter_auto_source_nat($fw = null)
 {
-    global $config;
+    $outbound = config_read_array('nat', 'outbound', false);
+    $ret = [];
 
-    $result = ['127.0.0.0/8'];
+    if (in_array($outbound['mode'] ?? '', ['', 'automatic', 'hybrid'])) {
+        $fw ??= filter_core_get_initialized_plugin_system();
 
-    require_once 'plugins.inc.d/openvpn.inc'; /* XXX for openvpn_legacy() */
+        $networks = array_merge(...array_values(plugins_run('networks_source_nat', [$fw])));
 
-    // Add openvpn networks
-    foreach (['server', 'client'] as $section) {
-        if (openvpn_legacy($section)) {
-            foreach (config_read_array('openvpn', "openvpn-{$section}", false) as $ovpn) {
-                if (!isset($ovpn['disable']) && !empty($ovpn['tunnel_network'])) {
-                    $result[] = $ovpn['tunnel_network'];
-                }
+        foreach ($fw->getInterfaceMapping() as $interface => $ifcfg) {
+            /* XXX VPN is allowed but not OpenVPN dropping /tmp/ovpnxy_router(v6) file */
+            if (substr($ifcfg['if'], 0, 4) != 'ovpn' && !empty($ifcfg['gateway'])) {
+                $ret[$interface] = $networks;
             }
         }
     }
 
-    // Add ipsec network pool if specified
-    if (!empty($config['ipsec']['client']['pool_address']) && !empty($config['ipsec']['client']['pool_netbits'])) {
-        $result[] = "{$config['ipsec']['client']['pool_address']}/{$config['ipsec']['client']['pool_netbits']}";
-    }
-
-    return $result;
+    return $ret;
 }
 
 /**
@@ -368,7 +362,7 @@ function filter_core_rules_system($fw, $defaults)
             ['direction' => 'in', 'interface' => $intf, 'ipprotocol' => 'inet6',
             '#ref' => "interfaces.php?if=" . $intf . "#blockpriv",
             'descr' => "Block private networks from " . $intfinfo['descr'],
-            'from' => 'fd00::/8,fe80::/10,::/128',
+            'from' => 'fd00::/8,fe80::/10,::1/128',
             'disabled' => $ipv6_disabled || empty($intfinfo['blockpriv'])],
             $privtmpl
         );
@@ -519,10 +513,10 @@ function filter_core_rules_system($fw, $defaults)
                 );
                 break;
             default:
-                $dhcpdv6_enabled = isset($config['dhcpdv6'][$intf]['enable']);
-                $track6_enabled = isset($intfinfo['track6-interface']);
+                $legacy_dhcpdv6 = file_exists('/usr/local/www/services_dhcpv6.php') &&
+                    (isset($config['dhcpdv6'][$intf]['enable']) || ($intfinfo['ipaddrv6'] ?? 'none') == 'track6');
 
-                if ($dhcpdv6_enabled || $track6_enabled || in_array($intf, $dhcrelay6_interfaces)) {
+                if ($legacy_dhcpdv6 || in_array($intf, $dhcrelay6_interfaces)) {
                     $fw->registerFilterRule(
                         1,
                         ['protocol' => 'udp','ipprotocol' => 'inet6', 'from' => 'fe80::/10', 'to' => 'fe80::/10,ff02::/16',
@@ -622,7 +616,7 @@ function filter_core_rules_system($fw, $defaults)
                                 // only try to add gateway rules for traffic leaving this interface
                                 // when the correct protocol is assigned to the interface
                                 $fw->registerFilterRule(
-                                    100000,
+                                    10000,
                                     ['from' => "({$ifcfg['if']})", 'direction' => 'out', 'gateway' => $gwname,
                                     'destination' => ['network' => $ifdescr, "not" => true],
                                     'statetype' => 'keep',
@@ -657,10 +651,11 @@ function filter_core_rules_system($fw, $defaults)
                 'descr' => $dnatrule['descr']
             ];
             if (!empty($dnatrule['destination']['port']) && !empty($dnatrule['local-port'])) {
-                $tmprule['destination']['port'] = $dnatrule['local-port'];
-                $parts = explode('-', $dnatrule['destination']['port']);
+                $tmprule['destination']['port'] = $rule->{'local-port'}->normalizedPort();
+
+                $parts = explode('-', $rule->destination->port->normalizedPort());
                 if (count($parts) == 2) {
-                    $range_end = $parts[1] - $parts[0] + $dnatrule['local-port'];
+                    $range_end = $parts[1] - $parts[0] + $tmprule['destination']['port'];
                     $tmprule['destination']['port'] .= sprintf('-%s', $range_end);
                 }
             } elseif (!empty($dnatrule['local-port'])) {
@@ -678,6 +673,8 @@ function filter_core_rules_system($fw, $defaults)
  */
 function filter_core_rules_user($fw)
 {
+    $has_legacy_fw = file_exists('/usr/local/www/firewall_rules.php');
+
     foreach ((new \OPNsense\Firewall\Group())->ifgroupentry->iterateItems() as $node) {
         $ifgroups[(string)$node->ifname] = !empty((string)$node->sequence) ? (string)$node->sequence : 0;
     }
@@ -692,7 +689,8 @@ function filter_core_rules_user($fw)
         $rule['label'] = OPNsense\Firewall\Util::calcRuleHash($rule);
 
         $intf = !empty($rule['floating']) ? 'FloatingRules' : $rule['interface'];
-        $rule['#ref'] = sprintf('firewall_rules_edit.php?if=%s&id=%s', $intf, $idx);
+        $rule['#ref'] = !$has_legacy_fw ? 'ui/firewall/migration' :
+            sprintf('firewall_rules_edit.php?if=%s&id=%s', $intf, $idx);
         $rule['seq'] = $idx;  // current rule sequence (used as id in firewall pages)
 
         if (empty($rule['descr'])) {

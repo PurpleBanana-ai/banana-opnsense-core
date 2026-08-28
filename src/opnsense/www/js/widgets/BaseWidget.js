@@ -65,9 +65,9 @@ class BaseWidget {
             if (key in widget_config &&
                 widget_config[key] !== null &&
                 widget_config[key] !== undefined &&
-                (typeof(widget_config[key] === 'array') && widget_config[key].length !== 0) &&
-                (typeof(widget_config[key] === 'object') && Object.keys(widget_config[key]).length !== 0) &&
-                (typeof(widget_config[key] === 'string') && widget_config[key].length !== 0)
+                !(Array.isArray(widget_config[key]) && widget_config[key].length === 0) &&
+                !(typeof widget_config[key] === 'object' && !Array.isArray(widget_config[key]) && Object.keys(widget_config[key]).length === 0) &&
+                !(typeof widget_config[key] === 'string' && widget_config[key].length === 0)
             ) {
                 if (value.type === 'select_multiple') {
                     const optionsArr = value.options.map(v => v.value);
@@ -297,8 +297,8 @@ class BaseWidget {
         id = this.sanitizeSelector(id);
         let $container = $(`
             <span class="transition-icon-container">
-                <i class="fa fa-spinner fa-spin hide transition-spinner" id="spinner-${id}" style="font-size: 13px;"></i>
-                <i class="fa fa-check checkmark hide transition-check" id="check-${id}" style="font-size: 13px;"></i>
+                <i class="fa fa-fw fa-spinner fa-spin hide transition-spinner" id="spinner-${id}" style="font-size: 13px;"></i>
+                <i class="fa fa-fw fa-check checkmark hide transition-check" id="check-${id}" style="font-size: 13px;"></i>
             </span>
         `);
 

@@ -35,5 +35,6 @@ class OverviewController extends IndexController
     public function indexAction()
     {
         $this->view->pick('OPNsense/Unbound/overview');
+        $this->view->dnsReportingForm = $this->getForm('dnsreporting');
     }
 }

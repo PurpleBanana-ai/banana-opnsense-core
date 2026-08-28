@@ -183,8 +183,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (!empty($pconfig['provider']) && !is_domain($pconfig['provider'])) {
         $input_errors[] = gettext("The Service name contains invalid characters.");
     }
-    if (($pconfig['idletimeout'] != "") && !is_numericint($pconfig['idletimeout'])) {
+    if ($pconfig['idletimeout'] != '' && !is_numericint($pconfig['idletimeout'])) {
         $input_errors[] = gettext("The idle timeout value must be an integer.");
+    }
+    if ($pconfig['username'] != '' && strpbrk($pconfig['username'], "\n\r") !== false) {
+        $input_errors[] = gettext('The username contains invalid characters.');
     }
 
     foreach ($pconfig['ports'] as $iface_idx => $iface) {
@@ -288,14 +291,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $a_ppps[] = $ppp;
         }
 
-        write_config();
-
-        $iflist = get_configured_interface_with_descr();
-        foreach ($iflist as $pppif => $ifdescr) {
-            if ($config['interfaces'][$pppif]['if'] == $ppp['if']) {
-                interface_ppps_configure($pppif);
+        if (write_config()) {
+            $iflist = get_configured_interface_with_descr();
+            foreach ($iflist as $pppif => $ifdescr) {
+                if ($config['interfaces'][$pppif]['if'] == $ppp['if']) {
+                    interface_ppps_configure($pppif);
+                }
             }
         }
+
 
         header(url_safe('Location: /interfaces_ppps.php'));
         exit;

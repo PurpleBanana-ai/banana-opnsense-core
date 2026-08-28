@@ -38,7 +38,9 @@
         });
 
         $(".forwarding-enabled").click(function() {
-            saveFormToEndpoint(url="/api/unbound/settings/set", formid='frm_ForwardingSettings');
+            saveFormToEndpoint(url="/api/unbound/settings/set", formid='frm_ForwardingSettings', function () {
+                $(document).trigger("settings-changed");
+            });
 
             let checked = ($(this).is(':checked'));
             toggleNameservers(checked);
@@ -89,7 +91,7 @@
             $('tr[id="row_dot.verify"]').removeClass('hidden');
             $('tr[id="row_dot.forward_tcp_upstream"]').addClass('hidden');
             /* remove advanced option toggle (currently no advanced options for DNS over TLS) */
-            $("#show_advanced_formDialog{{ formGridDot['edit_dialog_id'] }}").closest('td').html('');
+            $("#show_advanced_{{ formGridDot['edit_dialog_id'] }}").closest('td').html('');
         }
 
         /**

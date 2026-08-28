@@ -48,22 +48,35 @@ class Menu extends MenuContainer
         natcasesort($iftargets);
 
         // add interfaces to "Firewall: Rules" menu tab...
-        $has_legacy_fw = !empty($config->filter?->rule?->count());
-        $has_mvc_fw = !empty($config->OPNsense?->Firewall?->Filter?->rules?->count());
-        if ($has_legacy_fw) {
-            $this->appendItem('Firewall.Rules', 'Migration', [
-                    'url' => '/ui/firewall/migration',
-                    'fixedname' => sprintf("<i class='fa fa-fw fa-gears'> </i> %s", gettext('Migration assistant')),
-                    'order' => 0,
+        $has_legacy_fw = !empty($config->filter->rule) && !empty($config->filter->rule->count());
+        $has_legacy_outbound_nat = !empty($config->nat->outbound->rule) &&
+            !empty($config->nat->outbound->rule->count());
+        if ($has_legacy_fw || $has_legacy_outbound_nat) {
+            $this->appendItem('Firewall', 'Migration', [
+                'url' => '/ui/firewall/migration',
+                'fixedname' => gettext('Migration assistant'),
+                'cssClass' => 'fa fa-gears fa-fw',
+                'order' => 0,
             ]);
-            $iftargets = array_merge(['FloatingRules' => gettext('Floating')], $iftargets);
         }
+
+        /* do not hide the legacy firewall rules GUI when the plugin is installed */
+        $has_legacy_fw = file_exists('/usr/local/www/firewall_rules.php');
+        if ($has_legacy_fw) {
+            $iftargets = array_merge(['FloatingRules' => gettext('Floating')], $iftargets);
+            $this->appendItem('Firewall', 'Rules', [
+                'fixedname' => gettext('Rules [legacy]'),
+                'cssClass' => 'fa fa-check fa-fw',
+            ]);
+        }
+
         $ordid = 1;
         foreach ($iftargets as $key => $descr) {
-            if ($has_mvc_fw && !$has_legacy_fw) {
+            if (!$has_legacy_fw) {
                 /* only search */
                 $this->appendItem('Firewall.Rule', $key, [
                     'url' => '/ui/firewall/filter/#interface=' . $key,
+                    'visibility' => 'menu', /* XXX this isn't a feature but it works */
                     'fixedname' => $descr,
                     'order' => $ordid++,
                 ]);
@@ -92,6 +105,15 @@ class Menu extends MenuContainer
             $this->appendItem('Firewall.Rules.' . $key, 'Edit' . $key, [
                 'url' => '/firewall_rules_edit.php?if=' . $key . '&*',
                 'visibility' => 'hidden',
+            ]);
+        }
+
+        /* XXX do not hide the legacy outbound NAT rules GUI when the plugin is installed */
+        if ($has_legacy_outbound_nat && file_exists('/usr/local/www/firewall_nat_out.php')) {
+            $this->appendItem('Firewall.NAT', 'Outbound', [
+                'url' => '/firewall_nat_out.php',
+                'fixedname' => gettext('Outbound'),
+                'order' => 300,
             ]);
         }
     }

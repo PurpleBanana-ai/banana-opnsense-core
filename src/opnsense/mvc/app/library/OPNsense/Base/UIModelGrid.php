@@ -28,8 +28,6 @@
 
 namespace OPNsense\Base;
 
-use OPNsense\Core\Type;
-
 /**
  * Class UIModelGrid Grid control support functions
  * @package OPNsense\Base
@@ -135,6 +133,7 @@ class UIModelGrid
                 $row = ['uuid' => $record->getAttributes()['uuid']];
                 $reflen = strlen($record->__reference) + 1;
                 foreach ($record->getFlatNodes() as $key => $val) {
+                    // XXX: Structured field data (e.g. JsonAuditField) would need flattening here
                     $fieldname = substr($key, $reflen);
                     $descr = $val->getDescription();
                     $row[$fieldname] = $val->getValue();

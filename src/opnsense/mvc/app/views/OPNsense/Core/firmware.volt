@@ -46,7 +46,7 @@
                 return $(this).text();
             }).get();
             let name = row_by_col.join(',').toLowerCase();
-            if (entries == 'plugin_entry' && !$(this).hasClass('filter_sup_inst') && !$("#plugin_show_community").is(':checked')) {
+            if (entries == 'plugin_entry' && !$(this).hasClass('filter_sup_inst') && $.plugins_keep_full == undefined) {
                 $(this).hide();
             } else if (search.length != 0 && name.indexOf(search) == -1) {
                 $(this).hide();
@@ -85,7 +85,7 @@
                     row['reason']+'</td><td>'+row['repository'] + '</td></tr>');
 
                     if (row['name'] == data['product_target'] && row['new'] != 'N/A') {
-                        show_log = row['new'].replace(/[_-].*/, '');
+                        show_log = row['new'].replace(/[p_-].*/, '');
                     }
                 });
                 $('#update_status_container').hide();
@@ -412,7 +412,7 @@
 
             if (local_count == 0) {
                 $('#packageslist > tbody').append(
-                    '<tr><td colspan=6>{{ lang._('No packages were found on your system. Please call for help.') }}</td></tr>'
+                    '<tr><td colspan=7>{{ lang._('No packages were found on your system. Please call for help.') }}</td></tr>'
                 );
             }
 
@@ -473,8 +473,19 @@
 
             if (plugin_count == 0) {
                 $('#pluginlist > tbody').append(
-                    '<tr><td colspan=5>{{ lang._('Check for updates to view available plugins.') }}</td></tr>'
+                    '<tr><td colspan=7>{{ lang._('Check for updates to view available plugins.') }}</td></tr>'
                 );
+            } else if ($.plugins_keep_full == undefined) {
+                $('#pluginlist > tbody').append(
+                    '<tr class="plugins-full filter_sup_inst"><td colspan=7><a id="plugins-act" href="#">{{ lang._('Click to view the community plugins.') }}</a></td></tr>'
+                );
+                $("#plugins-act").click(function(event) {
+                    event.preventDefault();
+                    $(".plugins-hidden").attr('style', '');
+                    $(".plugins-full").attr('style', 'display: none;');
+                    $.plugins_keep_full = 1;
+                    $("#plugin_search").keyup();
+                });
             }
 
             if (data['product']['product_log']) {
@@ -496,13 +507,12 @@
             } else {
                 $('#plugin_actions').hide();
             }
-            $("#plugin_show_community").change();
 
             $("#changeloglist > tbody").empty();
             $("#changeloglist > thead").html("<tr><th>{{ lang._('Version') }}</th>" +
             "<th>{{ lang._('Date') }}</th><th></th></tr>");
 
-            const installed_version = data['product_version'].replace(/[_-].*/, '');
+            const installed_version = data['product_version'].replace(/[p_-].*/, '');
 
             $.each(data['changelog'], function(index, row) {
                 changelog_count += 1;
@@ -534,7 +544,7 @@
 
             if (changelog_count > changelog_max) {
                 $('#changeloglist > tbody').append(
-                    '<tr class= "changelog-full"><td colspan=3><a id="changelog-act" href="#">{{ lang._('Click to view full changelog history.') }}</a></td></tr>'
+                    '<tr class="changelog-full"><td colspan=3><a id="changelog-act" href="#">{{ lang._('Click to view full changelog history.') }}</a></td></tr>'
                 );
                 $("#changelog-act").click(function(event) {
                     event.preventDefault();
@@ -652,7 +662,6 @@
 
         $("#plugin_search").keyup(function () { generic_search(this, 'plugin_entry'); });
         $("#package_search").keyup(function () { generic_search(this, 'package_entry'); });
-        $("#plugin_show_community").change(function(){ $("#plugin_search").keyup();})
 
         ajaxGet('/api/core/firmware/running', {}, function(data, status) {
             if (data['status'] == 'busy') {
@@ -695,14 +704,12 @@
                                 .prop('selected', selected)
                         );
                     });
-                    if (fwopts['mirrors_allow_custom']) {
-                        $("#firmware_mirror :first-child").after($("<option/>")
-                            .attr("value", fwconf['mirror'])
-                            .text("(custom)")
-                            .data("custom", 1)
-                            .prop('selected', custom_selected)
-                        );
-                    }
+                    $("#firmware_mirror :first-child").after($("<option/>")
+                        .attr("value", fwconf['mirror'])
+                        .text("(custom)")
+                        .data("custom", 1)
+                        .prop('selected', custom_selected)
+                    );
 
                     $("#firmware_subscription").val(fwconf['subscription']);
 
@@ -722,14 +729,13 @@
                                 .prop('selected', selected)
                         );
                     });
-                    if (fwopts['flavours_allow_custom']) {
-                        $("#firmware_flavour :first-child").after($("<option/>")
-                            .attr("value", fwconf['flavour'])
-                            .text("(custom)")
-                            .data("custom", 1)
-                            .prop('selected', custom_selected)
-                        );
-                    }
+                    $("#firmware_flavour :first-child").after($("<option/>")
+                        .attr("value", fwconf['flavour'])
+                        .text("(custom)")
+                        .data("custom", 1)
+                        .prop('selected', custom_selected)
+                    );
+
                     $("#firmware_flavour").selectpicker('refresh');
                     $("#firmware_flavour").change();
                     if (fwconf['flavour'] !== '' || fwconf['reboot'] === '1' || fwconf['aux'] === '1') {
@@ -959,14 +965,7 @@
                                 <th style="vertical-align:middle">{{ lang._('Size') }}</th>
                                 <th style="vertical-align:middle">{{ lang._('Tier') }}</th>
                                 <th style="vertical-align:middle">{{ lang._('Repository') }}</th>
-                                <th style="vertical-align:middle">
-                                        {{ lang._('Comment') }}
-                                        <span class="checkbox pull-right" style="margin:auto">
-                                            <label>
-                                                <input type="checkbox" id="plugin_show_community">{{ lang._('Show community plugins') }}
-                                            </label>
-                                        </span>
-                                </th>
+                                <th style="vertical-align:middle">{{ lang._('Comment') }}</th>
                                 <th style="vertical-align:middle"></th>
                             </tr>
                         </thead>
@@ -996,96 +995,98 @@
                     </table>
                 </div>
                 <div id="settings" class="tab-pane table-responsive">
-                    <table class="table table-striped table-condensed">
-                        <tbody>
-                            <tr>
-                                <td style="text-align:left"><i class="fa fa-toggle-off text-danger" id="show_advanced_firmware"></i></a> <small>{{ lang._('advanced mode') }}</small></td>
-                                <td colspan="2" style="text-align:right">
-                                    <small>{{ lang._('full help') }}</small> <a href="#"><i class="fa fa-toggle-off text-danger" id="show_all_help_firmware"></i></a>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="width: 150px;"><a id="help_for_mirror" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> {{ lang._('Mirror') }}</td>
-                                <td>
-                                    <select class="selectpicker" id="firmware_mirror"  data-size="5" data-live-search="true">
-                                    </select>
-                                    <div style="display:none;" id="firmware_mirror_custom">
-                                        <input type="text" id="firmware_mirror_value">
-                                    </div>
-                                    <div class="hidden" data-for="help_for_mirror">
-                                        {{ lang._('Select an alternate firmware mirror.') }}
-                                    </div>
-                                </td>
-                                <td></td>
-                            </tr>
-                            <tr data-advanced="true">
-                                <td><a id="help_for_flavour" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> {{ lang._('Flavour') }}</td>
-                                <td>
-                                    <select class="selectpicker" id="firmware_flavour">
-                                    </select>
-                                    <div style="display:none;" id="firmware_flavour_custom">
-                                        <input type="text" id="firmware_flavour_value">
-                                    </div>
-                                    <div class="hidden" data-for="help_for_flavour">
-                                        {{ lang._('Select an alternate firmware flavour.') }}
-                                    </div>
-                                </td>
-                                <td></td>
-                            </tr>
-                            <tr>
-                                <td><a id="help_for_type" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> {{ lang._('Type') }}</td>
-                                <td>
-                                    <select class="selectpicker" id="firmware_type">
-                                    </select>
-                                    <div class="hidden" data-for="help_for_type">
-                                        {{ lang._('Select the release type.') }}
-                                    </div>
-                                </td>
-                                <td></td>
-                            </tr>
-                            <tr>
-                                <td style="width: 150px;"><a id="help_for_subscription" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> {{ lang._('Subscription') }}</td>
-                                <td>
-                                    <input type="text" id="firmware_subscription">
-                                    <div class="hidden" data-for="help_for_subscription">
-                                        {{ lang._('Provide subscription key.') }}
-                                    </div>
-                                </td>
-                                <td></td>
-                            </tr>
-                            <tr data-advanced="true">
-                                <td style="width: 150px;"><i class="fa fa-info-circle text-muted"></i> {{ lang._('Reboot') }}</td>
-                                <td>
-                                    <input type="checkbox" id="firmware_reboot">
-                                    {{ lang._('Always reboot after a successful update') }}
-                                </td>
-                                <td></td>
-                            </tr>
-                            <tr data-advanced="true">
-                                <td style="width: 150px;"><i class="fa fa-info-circle text-muted"></i> {{ lang._('Repository') }}</td>
-                                <td>
-                                    <input type="checkbox" id="firmware_aux">
-                                    {{ lang._('Activate the auxiliary packages repository') }}
-                                </td>
-                                <td></td>
-                            </tr>
-                            <tr>
-                                <td style="width: 150px;"><i class="fa fa-info-circle text-muted"></i> {{ lang._('Usage') }}</td>
-                                <td>
-                                    {{ lang._('In order to apply these settings a firmware update must be performed after save, which can include a reboot of the system.') }}
-                                </td>
-                                <td></td>
-                            </tr>
-                            <tr>
-                                <td></td>
-                                <td>
-                                    <button class="btn btn-primary" id="change_mirror" type="button"><i class="fa fa-floppy-o"></i> {{ lang._('Save') }}</button>
-                                    <button class="btn btn-default" id="reset_mirror" type="button"><i class="fa fa-times"></i> {{ lang._('Cancel') }}</button>
-                                </td>
-                                <td></td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <form id="frm_firmware_dummy">
+                        <table class="table table-striped table-condensed">
+                            <tbody>
+                                <tr>
+                                    <td style="text-align:left"><i class="fa fa-toggle-off text-danger" id="show_advanced_firmware"></i></a> <small>{{ lang._('advanced mode') }}</small></td>
+                                    <td colspan="2" style="text-align:right">
+                                        <small>{{ lang._('full help') }}</small> <a href="#"><i class="fa fa-toggle-off text-danger" id="show_all_help_firmware"></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="width: 150px;"><a id="help_for_mirror" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> {{ lang._('Mirror') }}</td>
+                                    <td>
+                                        <select class="selectpicker" id="firmware_mirror"  data-size="5" data-live-search="true">
+                                        </select>
+                                        <div style="display:none;" id="firmware_mirror_custom">
+                                            <input type="text" id="firmware_mirror_value">
+                                        </div>
+                                        <div class="hidden" data-for="help_for_mirror">
+                                            {{ lang._('Select an alternate firmware mirror.') }}
+                                        </div>
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr data-advanced="true">
+                                    <td><a id="help_for_flavour" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> {{ lang._('Flavour') }}</td>
+                                    <td>
+                                        <select class="selectpicker" id="firmware_flavour">
+                                        </select>
+                                        <div style="display:none;" id="firmware_flavour_custom">
+                                            <input type="text" id="firmware_flavour_value">
+                                        </div>
+                                        <div class="hidden" data-for="help_for_flavour">
+                                            {{ lang._('Select an alternate firmware flavour.') }}
+                                        </div>
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td><a id="help_for_type" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> {{ lang._('Type') }}</td>
+                                    <td>
+                                        <select class="selectpicker" id="firmware_type">
+                                        </select>
+                                        <div class="hidden" data-for="help_for_type">
+                                            {{ lang._('Select the release type.') }}
+                                        </div>
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td style="width: 150px;"><a id="help_for_subscription" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> {{ lang._('Subscription') }}</td>
+                                    <td>
+                                        <input type="text" id="firmware_subscription">
+                                        <div class="hidden" data-for="help_for_subscription">
+                                            {{ lang._('Provide subscription key.') }}
+                                        </div>
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr data-advanced="true">
+                                    <td style="width: 150px;"><i class="fa fa-info-circle text-muted"></i> {{ lang._('Reboot') }}</td>
+                                    <td>
+                                        <input type="checkbox" id="firmware_reboot">
+                                        {{ lang._('Always reboot after a successful update') }}
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr data-advanced="true">
+                                    <td style="width: 150px;"><i class="fa fa-info-circle text-muted"></i> {{ lang._('Repository') }}</td>
+                                    <td>
+                                        <input type="checkbox" id="firmware_aux">
+                                        {{ lang._('Activate the auxiliary packages repository') }}
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td style="width: 150px;"><i class="fa fa-info-circle text-muted"></i> {{ lang._('Usage') }}</td>
+                                    <td>
+                                        {{ lang._('In order to apply these settings a firmware update must be performed after save, which can include a reboot of the system.') }}
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td></td>
+                                    <td>
+                                        <button class="btn btn-primary" id="change_mirror" type="button"><i class="fa fa-floppy-o"></i> {{ lang._('Save') }}</button>
+                                        <button class="btn btn-default" id="reset_mirror" type="button"><i class="fa fa-times"></i> {{ lang._('Cancel') }}</button>
+                                    </td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </form>
                 </div>
             </div>
         </div>

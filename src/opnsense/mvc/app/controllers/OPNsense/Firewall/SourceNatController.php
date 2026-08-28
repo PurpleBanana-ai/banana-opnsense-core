@@ -36,5 +36,6 @@ class SourceNatController extends \OPNsense\Base\IndexController
         $this->view->pick('OPNsense/Firewall/nat_rule');
         $this->view->formDialogRule = $this->getForm('dialogSNatRule');
         $this->view->formGridRule = $this->getFormGrid('dialogSNatRule');
+        $this->view->formSnatMode = $this->getForm('dialogSNatMode');
     }
 }

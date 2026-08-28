@@ -110,37 +110,28 @@
                 });
             }
         });
-
-        $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
-            const activeTab = $(e.target).attr('href');
-
-            if (activeTab === '#configTab') {
-                $('#reconfigureAct').hide();
-                $('#downloadConfig').show();
-            } else {
-                $('#reconfigureAct').show();
-                $('#downloadConfig').hide();
-            }
-        });
-
-        $("#reconfigureAct").after($("#downloadConfig"));
     });
 </script>
 
 <ul class="nav nav-tabs" role="tablist" id="maintabs">
     {{ partial("layout_partials/base_tabs_header",['formData':formSettings]) }}
-    <li><a data-toggle="tab" href="#configTab" role="tab">{{ lang._('swanctl.conf') }}</a></li>
+    <li><a data-toggle="tab" href="#configTab" id="config_tab" role="tab">{{ lang._('swanctl.conf') }}</a></li>
 </ul>
 
 <form id="mainform">
     <div class="content-box tab-content">
         {{ partial("layout_partials/base_tabs_content",['formData':formSettings]) }}
-        <div id="configTab" class="tab-pane fade"/>
+        <div id="configTab" class="tab-pane fade">
+            <div class="content-box">
+                <div class="col-md-12">
+                    <br/>
+                    <button class="btn btn-primary" id="downloadConfig">{{ lang._('Download') }}</button>
+                    <br/>
+                    <br/>
+                </div>
+            </div>
+        </div>
     </div>
 </form>
 
-<button class="btn btn-primary" id="downloadConfig" style="display: none;">
-    {{ lang._('Download') }}
-</button>
-
-{{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/ipsec/service/reconfigure'}) }}
+{{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/ipsec/service/reconfigure', 'data_exclude_scope': 'config_tab'}) }}

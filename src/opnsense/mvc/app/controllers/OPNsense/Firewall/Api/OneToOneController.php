@@ -28,9 +28,6 @@
 
 namespace OPNsense\Firewall\Api;
 
-use OPNsense\Base\UserException;
-use OPNsense\Core\Config;
-
 class OneToOneController extends FilterBaseController
 {
     protected static $categorysource = "onetoone.rule";
@@ -76,7 +73,10 @@ class OneToOneController extends FilterBaseController
 
     public function getRuleAction($uuid = null)
     {
-        return $this->getBase("rule", "onetoone.rule", $uuid);
+        return $this->setCopySequence(
+            $this->getBase('rule', 'onetoone.rule', $uuid),
+            $this->getModel()->onetoone->rule
+        );
     }
 
     public function delRuleAction($uuid)
@@ -97,5 +97,15 @@ class OneToOneController extends FilterBaseController
     public function toggleRuleLogAction($uuid, $log)
     {
         return $this->toggleRuleLogBase($uuid, $log, 'onetoone.rule');
+    }
+
+    public function downloadRulesAction()
+    {
+        return $this->downloadRulesBase('onetoone.rule');
+    }
+
+    public function uploadRulesAction()
+    {
+        return $this->uploadRulesBase('onetoone.rule');
     }
 }

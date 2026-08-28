@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (C) 2015 Deciso B.V.
+ * Copyright (C) 2015-2026 Deciso B.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,7 @@ namespace OPNsense\Base;
 use Phalcon\Di\FactoryDefault;
 use Phalcon\Mvc\View;
 use Phalcon\Mvc\View\Engine\Volt as VoltEngine;
+use OPNsense\Auth\User;
 use OPNsense\Core\AppConfig;
 use OPNsense\Core\Config;
 use OPNsense\Mvc\Dispatcher;
@@ -76,6 +77,7 @@ class ControllerBase extends ControllerRoot
           '/ui/js/opnsense_theme.js',
           '/ui/js/opnsense_ui.js',
           '/ui/js/opnsense_status.js',
+          '/ui/js/opnsense_favorites.js',
           // OPNsense Menusystem access
           '/ui/js/opnsense_menusystem.js',
           // bootstrap script
@@ -101,6 +103,7 @@ class ControllerBase extends ControllerRoot
             '/css/tabulator.min.css',
             '/css/opnsense-bootgrid.css',
             '/css/opnsense-bootgrid-layout.css',
+            '/css/opnsense-favorites.css',
             // Font awesome
             '/ui/assets/fontawesome/css/all.min.css',
             '/ui/assets/fontawesome/css/v4-shims.min.css',
@@ -162,7 +165,17 @@ class ControllerBase extends ControllerRoot
      */
     private function parseFormNode($xmlNode)
     {
-        $result = [];
+        /* set defaults, always a root section (also used for advanced toggle) */
+        $result = [
+            'sections' => [
+                [
+                    'children' => [],
+                    'type' => false
+                ]
+            ],
+            'advanced' => false,
+            'help' => false
+        ];
         foreach ($xmlNode as $key => $node) {
             switch ($key) {
                 case "tab":
@@ -170,30 +183,57 @@ class ControllerBase extends ControllerRoot
                         $result['tabs'] = [];
                     }
                     $tab = [];
-                    $tab[] = (string)$node->attributes()->id;
-                    $tab[] = gettext((string)$node->attributes()->description);
+                    $tab['tab_id'] = (string)$node->attributes()->id;
+                    $tab['tab_descr'] = gettext((string)$node->attributes()->description);
                     if (isset($node->subtab)) {
-                        $tab["subtabs"] = $this->parseFormNode($node);
+                        $tab["subtabs"] = [];
+                        foreach ($node->subtab as $subnode) {
+                            $subtab = $this->parseFormNode($subnode);
+                            $subtab['tab_id'] = $subnode->attributes()->id;
+                            $subtab['tab_descr'] = gettext((string)$subnode->attributes()->description);
+                            $tab["subtabs"][] = $subtab;
+                        }
                     } else {
-                        $tab[] = $this->parseFormNode($node);
+                        $tab = array_merge($tab, $this->parseFormNode($node));
                     }
                     $result['tabs'][] = $tab;
                     break;
                 case "subtab":
-                    $subtab = [];
-                    $subtab[] = $node->attributes()->id;
-                    $subtab[] = gettext((string)$node->attributes()->description);
-                    $subtab[] = $this->parseFormNode($node);
-                    $result[] = $subtab;
                     break;
                 case "field":
                     // field type, containing attributes
-                    $result[] = $this->parseFormNode($node);
+                    $field = $this->parseFormNode($node);
+                    foreach (
+                        [
+                        'advanced', 'help', 'hint', 'style', 'maxheight', 'width',
+                        'allownew', 'readonly', 'type', 'collapse', 'static'
+                        ] as $f
+                    ) {
+                        if (!isset($field[$f])) {
+                            $field[$f] = false;
+                        } elseif (!empty($field[$f]) && in_array($f, ['advanced', 'help', 'collapse', 'static'])) {
+                            $result[$f] = true; /* top level booleans */
+                        }
+                    }
+                    if ($field['type'] == 'header') {
+                        $field['children'] = [];
+                        $result['sections'][] = $field;
+                    } else {
+                        $result['sections'][count($result['sections']) - 1]['children'][] = $field;
+                    }
                     break;
                 case "help":
                 case "hint":
                 case "label":
-                    $result[$key] = gettext((string)$node);
+                    $text = (string)$node;
+                    if (strlen($text)) {
+                        $result[$key] = gettext($text);
+                    } else {
+                        $result[$key] = '';
+                    }
+                    break;
+                case "grid_view":
+                    // skip grid properties
                     break;
                 default:
                     // default behavior, copy in value as key/value data
@@ -258,7 +298,10 @@ class ControllerBase extends ControllerRoot
                 foreach ($rootnode as $key => $item) {
                     switch ($key) {
                         case 'label':
-                            $record['label'] = gettext((string)$item);
+                            $text = (string)$item;
+                            if (strlen($text)) {
+                                $record['label'] = gettext($text);
+                            }
                             break;
                         case 'id':
                             $parts = explode('.', (string)$item);
@@ -280,6 +323,8 @@ class ControllerBase extends ControllerRoot
                             continue 2;
                         } elseif ($key == 'sequence') {
                             $this_sequence = (string)$item;
+                        } elseif ($key == 'label') {
+                            $record[$key] = strlen((string)$item) ? gettext((string)$item) : '';
                         } else {
                             $record[$key] = (string)$item;
                         }
@@ -378,9 +423,16 @@ class ControllerBase extends ControllerRoot
         $this->view->setVar('langcode', str_replace('_', '-', $this->langcode));
 
         $rewrite_uri = explode("?", $_SERVER["REQUEST_URI"])[0];
-        $this->view->menuSystem = $menu->getItems($rewrite_uri);
+        $menuFavorites = (new User())->getUserByName($_SESSION['Username'] ?? '')?->menu_favorites->deserialize() ?? [];
         /* XXX generating breadcrumbs requires getItems() call */
+        $this->view->menuSystem = $menu->getItems($rewrite_uri);
         $this->view->menuBreadcrumbs = $menu->getBreadcrumbs();
+        $this->view->menuSelectedUrl = $menu->getSelectedUrl();
+        $this->view->menuFavorites = json_encode($menuFavorites);
+        $this->view->menuSelectedIsFavorite = in_array(
+            $this->view->menuSelectedUrl,
+            $menuFavorites
+        );
 
         // set theme in ui_theme template var, let template handle its defaults (if there is no theme).
         if (

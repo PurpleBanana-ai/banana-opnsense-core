@@ -300,17 +300,17 @@ function service_control_restart($name, $extras)
 
 function is_subsystem_dirty($subsystem = '')
 {
-    return file_exists("/tmp/{$subsystem}.dirty");
+    return file_exists("/var/lib/php/tmp/{$subsystem}.dirty");
 }
 
 function mark_subsystem_dirty($subsystem = '')
 {
-    touch("/tmp/{$subsystem}.dirty");
+    touch("/var/lib/php/tmp/{$subsystem}.dirty");
 }
 
 function clear_subsystem_dirty($subsystem = '')
 {
-    @unlink("/tmp/{$subsystem}.dirty");
+    @unlink("/var/lib/php/tmp/{$subsystem}.dirty");
 }
 
 function exit_on_bootup($callback = null, $arguments = [])
@@ -401,9 +401,9 @@ function gen_subnetv6_max($ipaddr, $bits)
         }
     );
     $mask = Net_IPv6::getNetmask('FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF', $bits);
-    $inet_ip = (binary)inet_pton($ipaddr);
+    $inet_ip = (string)inet_pton($ipaddr);
     if ($inet_ip) {
-        $inet_mask = (binary)inet_pton($mask);
+        $inet_mask = (string)inet_pton($mask);
         if ($inet_mask) {
             $inet_end = $inet_ip | ~$inet_mask;
             $result = inet_ntop($inet_end);

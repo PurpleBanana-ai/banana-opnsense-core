@@ -17,6 +17,16 @@
         </grid_view>
     </field>
     <field>
+        <id>rule.sort_order</id>
+        <label>Sort order</label>
+        <type>ignore</type>
+        <grid_view>
+            <sequence>10</sequence>
+            <visible>false</visible>
+            <order>asc</order>
+        </grid_view>
+    </field>
+    <field>
         <id>rule.sequence</id>
         <label>Sequence</label>
         <type>text</type>
@@ -24,7 +34,6 @@
         <advanced>true</advanced>
         <grid_view>
             <visible>false</visible>
-            <order>asc</order>
         </grid_view>
     </field>
     <field>
@@ -87,7 +96,7 @@
     </field>
     <field>
         <id>rule.trackif</id>
-        <label>Track interface</label>
+        <label>Associated interface</label>
         <type>dropdown</type>
         <help>Use prefix defined on the selected interface instead of the interface this rule applies to when target prefix is not provided.</help>
         <grid_view>
@@ -103,6 +112,80 @@
         <label>Log</label>
         <type>checkbox</type>
         <help>Log packets that are handled by this rule</help>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Audit</label>
+        <collapse>true</collapse>
+    </field>
+    <field>
+        <type>subheader</type>
+        <label>Created</label>
+    </field>
+    <field>
+        <id>rule.audit.created.username</id>
+        <label>Username</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.created.time</id>
+        <label>Time</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.created.description</id>
+        <label>Description</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <type>subheader</type>
+        <label>Updated</label>
+    </field>
+    <field>
+        <id>rule.audit.updated.username</id>
+        <label>Username</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.updated.time</id>
+        <label>Time</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.updated.description</id>
+        <label>Description</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <type>subheader</type>
+        <label>Userdata</label>
+    </field>
+    <field>
+        <id>rule.audit.userdata.note</id>
+        <label>Note</label>
+        <type>textbox</type>
+        <help>Add a note to describe why this rule was created or changed.</help>
         <grid_view>
             <ignore>true</ignore>
         </grid_view>

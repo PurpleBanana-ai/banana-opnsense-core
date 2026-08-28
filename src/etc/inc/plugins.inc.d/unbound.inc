@@ -61,7 +61,7 @@ function unbound_services()
     $pconfig = [];
     $pconfig['name'] = 'unbound';
     $pconfig['dns_ports'] = [(string)$mdl->general->port];
-    $pconfig['description'] = gettext('Unbound DNS');
+    $pconfig['description'] = gettext('Unbound');
     $pconfig['php']['restart'] = ['unbound_configure_do'];
     $pconfig['php']['start'] = ['unbound_configure_do'];
     $pconfig['php']['stop'] = ['unbound_service_stop'];
@@ -213,8 +213,7 @@ function unbound_generate_config()
             $dns64_config .= "\ndns64-prefix: {$general['dns64prefix']}";
         }
         if (!empty($general['noarecords'])) {
-            $module_config .= 'respip ';
-            $dns64_config .= "\nresponse-ip: 0.0.0.0/0 redirect";
+            $dns64_config .= "\nlocal-zone: \".\" block_a_wdata";
         }
         $module_config .= 'dns64 ';
     }

@@ -58,9 +58,12 @@
             if (grid_ids !== null) {
                 grid_ids.forEach(function (grid_id) {
                     if (all_grids[grid_id] === undefined) {
-                        const isGroupedGrid = [
+                        const isGroupedSubnet = [
                             "{{formGridPDPool['table_id']}}",
                             "{{formGridReservation['table_id']}}"
+                        ].includes(grid_id);
+                        const isGroupedInterface = [
+                            "{{formGridSubnet['table_id']}}"
                         ].includes(grid_id);
                         all_grids[grid_id] = $("#" + grid_id).UIBootgrid({
                             search: '/api/kea/dhcpv6/search_' + grid_id,
@@ -69,21 +72,49 @@
                             add:    '/api/kea/dhcpv6/add_' + grid_id + '/',
                             del:    '/api/kea/dhcpv6/del_' + grid_id + '/',
                             tabulatorOptions: {
-                                groupBy: !isGroupedGrid
-                                    ? false
-                                    : "%subnet",
+                                groupBy: isGroupedSubnet
+                                    ? "%subnet"
+                                    : isGroupedInterface
+                                        ? "%interface"
+                                        : false,
                                 groupHeader: (value, count, data, group) => {
                                     const icons = {
                                         subnet: '<i class="fa fa-fw fa-ethernet fa-sm text-info"></i>',
                                     };
-                                    const countValue = `<span class="badge chip">${count}</span>`;
-                                    return `${icons.subnet} ${value} ${countValue}`;
+                                    return `${icons.subnet} ${value}`;
                                 },
                             },
                             options: {
                                 triggerEditFor: getUrlHash('edit'),
-                                initialSearchPhrase: getUrlHash('search')
-                            }
+                                initialSearchPhrase: getUrlHash('search'),
+                                formatters: {
+                                    subnet: function(column, row) {
+                                        if ((row.subnet || '') === '') {
+                                            // XXX: Dynamic hints could be a possibility, though more complex than this.
+                                            return $("<span/>")
+                                                .append($("<i/>", {class: "fa fa-fw fa-random"}))
+                                                .append(document.createTextNode(" {{ lang._('dynamic') }}"))[0];
+                                        }
+                                        return row["%" + column.id] || row[column.id] || "";
+                                    },
+                                    option_data_autocollect: function(column, row) {
+                                        if (row.option_data_autocollect === "1") {
+                                            return $("<span/>")
+                                                .append($("<i/>", {class: "fa fa-fw fa-random"}))
+                                                .append(document.createTextNode(" {{ lang._('dynamic') }}"))[0];
+                                        }
+                                        return row["%" + column.id] || row[column.id] || "";
+                                    },
+                                    pd_pool: function(column, row) {
+                                        if ((row.prefix || '') === '' && (row.prefix_len || '') === '') {
+                                            return $("<span/>")
+                                                .append($("<i/>", {class: "fa fa-fw fa-random"}))
+                                                .append(document.createTextNode(" {{ lang._('dynamic') }}"))[0];
+                                        }
+                                        return row["%" + column.id] || row[column.id] || "";
+                                    },
+                                },
+                            },
                         });
 
                         // Reservation-only commands
@@ -117,15 +148,39 @@
             }
         });
 
-        /**
-         *
-         */
         $("#subnet6\\.option_data_autocollect").change(function(){
             if ($(this).is(':checked')) {
                 $(".option_data_autocollect").closest('tr').hide();
             } else {
                 $(".option_data_autocollect").closest('tr').show();
             }
+        });
+
+        $("#subnet6\\.dynamic_prefix").change(function(){
+            if ($(this).is(':checked')) {
+                $(".static_prefix").closest('tr').hide();
+            } else {
+                $(".static_prefix").closest('tr').show();
+            }
+        });
+
+        // Since dynamic pd_pools relate to their dynamic subnet, map them first
+        $("#pd_pool\\.subnet").change(function(){
+            const subnet_uuid = $(this).val();
+            if (subnet_uuid === '') {
+                $(".static_prefix").closest('tr').show();
+                return;
+            }
+            ajaxGet("/api/kea/dhcpv6/search_subnet", {}, function(data) {
+                const subnet = (data.rows || []).find(row => row.uuid === subnet_uuid);
+                const is_dynamic = subnet !== undefined &&
+                    (subnet.dynamic_prefix === '1' || subnet.dynamic_prefix === true);
+                if (is_dynamic) {
+                    $(".static_prefix").closest('tr').hide();
+                } else {
+                    $(".static_prefix").closest('tr').show();
+                }
+            });
         });
 
         /* Manual configuration, hide all config elements except the service section*/
@@ -187,7 +242,7 @@
     <li><a data-toggle="tab" href="#subnets" id="tab_pools" class="is_managed"> {{ lang._('Subnets') }} </a></li>
     <li><a data-toggle="tab" href="#pdpools" id="tab_reservations" class="is_managed"> {{ lang._('PD Pools') }} </a></li>
     <li><a data-toggle="tab" href="#reservations" id="tab_reservations" class="is_managed"> {{ lang._('Reservations') }} </a></li>
-    <li><a data-toggle="tab" href="#options" id="tab_options">{{ lang._('Options') }}</a></li>
+    <li><a data-toggle="tab" href="#options" id="tab_options" class="is_managed">{{ lang._('Options') }}</a></li>
     <li><a data-toggle="tab" href="#ha-peers" id="tab_ha-peers" class="is_managed"> {{ lang._('HA Peers') }} </a></li>
 </ul>
 <div class="tab-content content-box">

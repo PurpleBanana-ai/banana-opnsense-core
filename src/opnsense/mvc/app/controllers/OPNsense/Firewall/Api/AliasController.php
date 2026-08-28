@@ -168,7 +168,7 @@ class AliasController extends ApiMutableModelControllerBase
     public function getItemAction($uuid = null)
     {
         $response = $this->getBase("alias", "aliases.alias", $uuid);
-        $selected_aliases = array_keys($response['alias']['content']);
+        $selected_aliases = array_keys($response['alias']['content'] ?? []);
         foreach ($this->getModel()->aliasIterator() as $alias) {
             if (!in_array($alias['name'], $selected_aliases)) {
                 $response['alias']['content'][$alias['name']] = [
@@ -329,8 +329,8 @@ class AliasController extends ApiMutableModelControllerBase
     {
         if ($this->request->isPost()) {
             $backend = new Backend();
-            $backend->configdRun('template reload OPNsense/Filter');
             $backend->configdRun("filter reload skip_alias");
+            $backend->configdRun('template reload OPNsense/Filter');
             $bckresult = json_decode($backend->configdRun("filter refresh_aliases"), true);
             if (!empty($bckresult['messages'])) {
                 throw new UserException(implode("\n", $bckresult['messages']), gettext("Alias"));

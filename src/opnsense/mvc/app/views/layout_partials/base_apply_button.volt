@@ -1,4 +1,4 @@
-<section class="page-content-main grid-bottom-reserve">
+<section class="grid-bottom-reserve __mt">
     <div class="alert content-box" style="display: flex; align-items: center; margin-bottom: 0;">
         <button class="btn btn-primary __mr" id="{{ button_id|default('reconfigureAct') }}"
             data-endpoint="{{ data_endpoint }}"
@@ -9,6 +9,9 @@
 {% endif %}
 {% if data_grid_reload is defined %}
             data-grid-reload="{{ data_grid_reload }}"
+{% endif %}
+{% if data_exclude_scope is defined %}
+            data-exclude-scope="{{ data_exclude_scope }}"
 {% endif %}
             type="button">
         </button>

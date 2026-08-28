@@ -37,7 +37,6 @@ use OPNsense\Core\Syslog;
 use ReflectionClass;
 use ReflectionException;
 use SimpleXMLElement;
-use http\Message;
 
 /**
  * Class BaseModel implements base model to bind config and definition to object.
@@ -413,7 +412,7 @@ abstract class BaseModel
             return $class_info->newInstance(true)->getNodeContent();
         }
         $cache_filename = self::getCacheFileName();
-        $fobj = new \OPNsense\Core\FileObject($cache_filename, 'a+', 0660, LOCK_EX, 'wwwonly:wheel');
+        $fobj = new \OPNsense\Core\FileObject($cache_filename, 'a+e', 0660, LOCK_EX, 'wwwonly:wheel');
         $cache_payload = $fobj->readJson() ?? [];
         if (!isset($cache_payload['persisted_at']) || $cache_payload['persisted_at'] != $persisted_at) {
             /**

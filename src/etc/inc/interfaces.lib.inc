@@ -251,22 +251,14 @@ function legacy_interface_stats($ifs = null)
  */
 function legacy_interfaces_details($intf = null)
 {
+    $cmd = '/sbin/ifconfig -Lmv';
     $result = [];
+
     if (!empty($intf)) {
-        $tmp_intf = escapeshellarg($intf);
-    } else {
-        $tmp_intf = '';
+        $cmd = implode(' ', [$cmd, escapeshellarg($intf)]);
     }
 
-    $cmd = '/sbin/ifconfig -Lmv ' . $tmp_intf;
-    exec($cmd . ' 2>&1', $ifconfig_data, $ret);
-    if ($ret) {
-        /* only error if no explicit interface was chosen */
-        if (empty($intf)) {
-            legacy_interface_error($cmd, implode(' ', $ifconfig_data));
-        }
-        return $result;
-    }
+    exec($cmd . ' 2> /dev/null', $ifconfig_data, $ret);
 
     $vfaces = interfaces_virtual_patterns();
     $current_interface = null;
@@ -405,7 +397,7 @@ function legacy_interfaces_details($intf = null)
             }
             $result[$current_interface]['media_raw'] = substr(trim($line), 7);
         } elseif (preg_match("/media (.*)/", $line, $matches)) {
-            $result[$current_interface]["supported_media"][] = str_replace(" mediaopt ", " ", trim($matches[1]));
+            $result[$current_interface]["supported_media"][] = str_replace(" mediaopt ", "\t", trim($matches[1]));
         } elseif (preg_match("/plugged: (.*)/", $line, $matches)) {
             $result[$current_interface]['sfp'] = [
                 'plugged' => $matches[1]

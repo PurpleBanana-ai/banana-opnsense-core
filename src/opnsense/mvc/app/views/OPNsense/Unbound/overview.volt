@@ -35,7 +35,34 @@
 
 <script>
     $(document).ready(function() {
-        $('#info').hide();
+        let data_get_map = {'frm_UnboundReportingSettings':"/api/unbound/settings/get"};
+        mapDataToFormUI(data_get_map);
+
+        $("#reconfigureAct").SimpleActionButton({
+            onPreAction: function () {
+                const dfObj = new $.Deferred();
+                saveFormToEndpoint("/api/unbound/settings/set", 'frm_UnboundReportingSettings', function () {
+                    dfObj.resolve();
+                }, true, function () {
+                    dfObj.reject();
+                });
+              return dfObj;
+            },
+            onAction: function() {
+                reset();
+            }
+        });
+
+        $("#reconfigureAct").after($("#reset-dns").detach().show());
+        $("#reset-dns").click(function(e) {
+            stdDialogRemoveItem("{{ lang._('Do you really want to reset the Unbound statistics data?') }}", () => {
+                ajaxCall("/api/unbound/overview/reset", {}, function() {
+                    reset();
+                });
+            });
+        });
+
+        updateServiceControlUI('unbound');
 
         function set_alpha(color, opacity) {
             const op = Math.round(Math.min(Math.max(opacity || 1, 0), 1) * 255);
@@ -408,7 +435,7 @@
                             <i class="fa fa-cogs"></i>
                         </button>
                     `).on('click', function () {
-                        openPoliciesDialog(domain, uuid, action, statObj?.blocklist ?? "");
+                        openPoliciesDialog(domain, uuid, action, statObj);
                     });
 
                     let bl = (uuid && uuid in policies) ? `(${policies[uuid].description})` : '';
@@ -508,6 +535,14 @@
                 $('#timeperiod-clients').selectpicker('refresh');
                 $('#toggle-extended-domains').selectpicker('refresh');
 
+                if (g_queryChart) {
+                    g_queryChart.destroy();
+                }
+
+                if (g_clientChart) {
+                    g_clientChart.destroy();
+                }
+
                 g_queryChart = create_chart($("#rollingChart"), 60, [], false);
                 g_clientChart = create_client_chart($("#rollingChartClient"), 60, [], false);
                 updateQueryChart($("#toggle-log-qchart")[0].checked);
@@ -553,15 +588,27 @@
             create_or_update_totals();
         });
 
-        do_startup().done(function() {
-            $('.wrapper').show();
-        }).fail(function() {
-            $('.wrapper').hide();
-            $('#info').show();
-        });
+        const reset = () => {
+            do_startup().done(function() {
+                $('#info').hide();
+                $('#maintabs li:lt(2)').show();
+
+                $('#query_overview_tab').tab('show');
+            }).fail(function() {
+                $("#maintabs li:lt(2)").hide();
+                $("#query_settings_tab").tab('show');
+                $('#info').show();
+            });
+        }
+
+        reset();
 
         function refreshPoliciesDialog(dialogRef, domain, uuid, appliedAction, blocklist) {
             const cleanDomain = domain.replace(/\.$/, "");
+            const category = blocklist?.category ?? '';
+            const provider = category;
+            blocklist = blocklist?.blocklist ?? blocklist ?? '';
+            let bl_category = blocklist;
 
             ajaxGet('/api/unbound/overview/get_policies', {}, function (data, status) {
                 let $container = $('<div>');
@@ -628,9 +675,13 @@
                 }
 
                 if (blocklist != "") {
+                    let display_text = blocklist;
+                    if (provider) {
+                        bl_category += ' - ' + category;
+                    }
                     $container = $(`
                         <div>
-                            {{ lang._('Blocklist match:')}} ${blocklist}
+                            {{ lang._('Blocklist match:')}} ${bl_category}
                         </div>
                     `);
                 }
@@ -691,10 +742,9 @@
                                 const uuid = data.uuid;
                                 const domain = data.domain;
                                 const appliedAction = data.action;
-                                const blocklist = data.blocklist;
 
                                 $el.click(function() {
-                                    openPoliciesDialog(domain, uuid, appliedAction, blocklist);
+                                    openPoliciesDialog(domain, uuid, appliedAction, data);
                                 });
                             }
                         }
@@ -725,6 +775,12 @@
                             },
                             "domain": function (column, row) {
                                 return row.domain;
+                            },
+                            "blocklist": function (column, row) {
+                                if (row.category) {
+                                    return row.blocklist + ' - ' + row.category;
+                                }
+                                return row.blocklist;
                             }
                         },
                         statusMapping: {
@@ -774,24 +830,23 @@
 
 </script>
 
-<div id="info" class="alert alert-warning" role="alert">
-    {{ lang._('Local gathering of statistics is not enabled. Enable it in Reporting Settings page.') }}
-    <br />
-    <a href="/reporting_settings.php">{{ lang._('Go to the Reporting configuration') }}</a>
+<div id="info" class="alert alert-warning" role="alert" style="display:none;">
+    {{ lang._('Local gathering of statistics is not enabled.') }}
 </div>
 <div class="wrapper">
     <ul class="nav nav-tabs" data-tabs="tabs" id="maintabs" style="border-bottom: none">
         <li class="active"><a data-toggle="tab" href="#query-overview" id="query_overview_tab">{{ lang._('Overview') }}</a></li>
         <li><a data-toggle="tab" href="#query-details" id="query_details_tab">{{ lang._('Details') }}</a></li>
+        <li><a data-toggle="tab" href="#query-settings" id="query_settings_tab">{{ lang._('Settings') }}</a></li>
     </ul>
     <div class="tab-content content-box">
         <div id="query-overview" class="tab-pane fade in active">
-            <div class="content-box" style="margin-bottom: 10px;">
+            <div>
                 <div id="counters" class="container-fluid">
-                    <div class="col-md-12">
+                    <div class="col-md-12" style="height: 40px;">
                         <h3 id="bannersub"></h3>
                     </div>
-                    <div class="row" style="margin-bottom: 20px; margin-top: 20px;">
+                    <div class="row" style="margin-top: 40px;">
                         <div class="banner col-xs-3 justify-content-center">
                             <div class="stats-element">
                                 <div class="stats-icon">
@@ -839,7 +894,8 @@
                     </div>
                 </div>
             </div>
-            <div class="content-box" style="margin-bottom: 10px;">
+            <div><hr/></div>
+            <div>
                 <div id="graph" class="container-fluid">
                     <div class="row justify-content-center" style="display: flex; flex-wrap: wrap;">
                         <div class="col-md-4"></div>
@@ -870,7 +926,8 @@
                     </div>
                 </div>
             </div>
-            <div class="content-box" style="margin-bottom: 10px;">
+            <div><hr/></div>
+            <div>
                 <div id="graph" class="container-fluid">
                     <div class="row justify-content-center" style="display: flex; flex-wrap: wrap;">
                         <div class="col-md-4"></div>
@@ -901,7 +958,8 @@
                     </div>
                 </div>
             </div>
-            <div class="content-box">
+            <div><hr/></div>
+            <div>
                 <div class="container-fluid">
                     <div class="row justify-content-center" style="display: flex; flex-wrap: wrap;">
                     <div class="col-md-4"></div>
@@ -967,5 +1025,11 @@
                 </tfoot>
             </table>
         </div>
+        <div id="query-settings" class="tab-pane fade in">
+            {{ partial("layout_partials/base_form",['fields':dnsReportingForm,'id':'frm_UnboundReportingSettings'])}}
+        </div>
     </div>
 </div>
+
+{{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/unbound/service/reconfigure_general', 'data_service_widget': 'unbound', 'data_exclude_scope': 'query_overview_tab,query_details_tab'}) }}
+<button id="reset-dns" class="btn btn-default __mr" style="display: none;">{{ lang._('Reset DNS Data') }}</button>

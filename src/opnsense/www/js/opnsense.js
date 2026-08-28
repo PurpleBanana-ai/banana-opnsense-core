@@ -40,6 +40,21 @@ function htmlDecode(value) {
     return $("<textarea/>").html(value).text();
 }
 
+/**
+ * replace single and double quotes with their HTML-safe equivalents
+ *
+ * @param value input string
+ * @returns string
+ */
+function htmlSafe(value) {
+    if (typeof value !== "string") {
+        return value;
+    }
+
+    return value.replace(/["']/g, (char) => {
+        return char === '"' ? "&quot;" : "&#39;";
+    });
+}
 
  /**
  *
@@ -161,6 +176,11 @@ function setFormData(parent,data) {
                                 let opt = $("<option>").val(htmlDecode(node[keypart][i].key)).text(
                                     htmlDecode(node[keypart][i].value)
                                 );
+                                if (node[keypart][i].data !== undefined) {
+                                    $.each(node[keypart][i].data, function(data_idx, data_content) {
+                                        opt.attr('data-'+data_idx, data_content);
+                                    });
+                                }
                                 if (String(node[keypart][i].selected) !== "0") {
                                     opt.attr('selected', 'selected');
                                 }
@@ -174,9 +194,14 @@ function setFormData(parent,data) {
                             // default "dictionary" type select items
                             // (eg node[keypart]['item'] = {selected: 0, value: 'my item'})
                             $.each(node[keypart],function(indxItem, keyItem){
-                                let opt = $("<option>").val(htmlDecode(indxItem)).text(htmlDecode(keyItem["value"]));
+                                let opt = $("<option>").val(htmlDecode(indxItem)).text(htmlDecode(keyItem.value));
+                                if (keyItem.data !== undefined) {
+                                    $.each(keyItem.data, function(data_idx, data_content) {
+                                        opt.attr('data-'+data_idx, data_content);
+                                    });
+                                }
                                 let optgroup = keyItem.optgroup ?? '';
-                                if (String(keyItem["selected"]) !== "0") {
+                                if (String(keyItem.selected) !== "0") {
                                     opt.attr('selected', 'selected');
                                 }
                                 if (optgroups[optgroup] === undefined) {
@@ -202,7 +227,7 @@ function setFormData(parent,data) {
                     } else if (targetNode.is("span")) {
                         if (node[keypart] != null) {
                             targetNode.text("");
-                            targetNode.append(htmlDecode(node[keypart]));
+                            targetNode.append(node[keypart]);
                         }
                     } else if (targetNode.hasClass('json-data')) {
                         // if the input field is JSON data, serialize the data into the field
@@ -236,16 +261,22 @@ function setFormData(parent,data) {
 function handleFormValidation(parent, validationErrors)
 {
     $("#" + parent).find("[id]").each(function () {
-        let target = $("*[id*='" + $(this).prop('id') + "']");
+        let help_block = $("span[id='help_block_" + $(this).prop('id') + "']");
+        if (!help_block.length) {
+            return true;
+        }
+
+        help_block.empty();
+
+        let target = $("*[id$='" + $(this).prop('id') + "']");
         if (validationErrors !== undefined && $(this).prop('id') in validationErrors) {
             let message = validationErrors[$(this).prop('id')];
-            $("span[id='help_block_" + $(this).prop('id') + "']").empty();
             if (typeof message === 'object') {
                 for (let i=0 ; i < message.length ; ++i)  {
-                    $("span[id='help_block_" + $(this).prop('id') + "']").append($("<div>").text(message[i]));
+                    help_block.append($("<div>").text(message[i]));
                 }
             } else {
-                $("span[id='help_block_" + $(this).prop('id') + "']").text(message);
+                help_block.text(message);
             }
             target.addClass("has-error");
             /* make sure to always unhide row when triggering a validation */
@@ -256,7 +287,6 @@ function handleFormValidation(parent, validationErrors)
             target[0].scrollIntoView();
         } else {
             target.removeClass("has-error");
-            $("span[id='help_block_" + $(this).prop('id') + "']").empty();
         }
     });
 

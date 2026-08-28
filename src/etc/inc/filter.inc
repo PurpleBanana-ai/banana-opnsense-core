@@ -169,7 +169,7 @@ function filter_configure_sync($verbose = false, $load_aliases = true)
     \OPNsense\Firewall\Alias::flushCacheData();
 
     /* Use filter lock to not allow concurrent filter reloads during this run. */
-    $fobj = new \OPNsense\Core\FileObject('/tmp/rules.debug', 'a+', 0600, LOCK_EX);
+    $fobj = new \OPNsense\Core\FileObject('/tmp/rules.debug', 'a+e', 0600, LOCK_EX);
 
     /*
      * Kickstart dnctl and ipfw (no-op if shaper not configured)
@@ -182,80 +182,60 @@ function filter_configure_sync($verbose = false, $load_aliases = true)
 
     service_log('.', $verbose);
 
-    // initialize fw plugin object
+    /* initialize fw plugin object */
     $fw = filter_core_get_initialized_plugin_system();
     filter_core_bootstrap($fw);
     $cnfint = iterator_to_array($fw->getInterfaceMapping());
     plugins_firewall($fw);
-    // register legacy user rules
+
+    /* register legacy user rules */
     filter_core_rules_user($fw);
 
-    // manual outbound nat rules
+    /* manual outbound nat rules */
     if (
         !empty($config['nat']['outbound']['mode']) &&
-          in_array($config['nat']['outbound']['mode'], array("advanced", "hybrid"))
+          in_array($config['nat']['outbound']['mode'], ['advanced', 'hybrid'])
     ) {
         if (!empty($config['nat']['outbound']['rule'])) {
             foreach ($config['nat']['outbound']['rule'] as $rule) {
                 if (is_array($rule)) {
-                    $fw->registerSNatRule(100, $rule);
+                    $fw->registerSourceNatRule(100, $rule);
                 }
             }
         }
     }
 
-    if (
-        empty($config['nat']['outbound']['mode']) ||
-          in_array($config['nat']['outbound']['mode'], array("automatic", "hybrid"))
-    ) {
-        // generate standard outbound rules when mode is automatic or hybrid
-        $intfv4 = array();
-        foreach ($fw->getInterfaceMapping() as $intf => $intfcf) {
-            if (!empty($intfcf['ifconfig']['ipv4']) && empty($intfcf['gateway'])) {
-                $intfv4[] = $intf;
-            }
-        }
-        // add VPN and local networks
-        $intfv4 = array_merge($intfv4, filter_core_get_default_nat_outbound_networks());
-        foreach ($fw->getInterfaceMapping() as $intf => $ifcfg) {
-            /* XXX VPN is allowed but not OpenVPN dropping /tmp/ovpnxy_router(v6) file */
-            if (substr($ifcfg['if'], 0, 4) != 'ovpn' && !empty($ifcfg['gateway'])) {
-                foreach (array(500, null) as $dstport) {
-                    $rule = array(
-                        'descr' => 'Automatic outbound rule',
-                        'destination' => array('any' => true),
-                        'dstport' => $dstport,
-                        'interface' => $intf,
-                        'ipprotocol' => 'inet',
-                        'log' => !empty($config['syslog']['logoutboundnat']),
-                        'staticnatport' => !empty($dstport),
-                    );
-                    foreach ($intfv4 as $network) {
-                        $rule['source'] = array("network" => $network);
-                        $fw->registerSNatRule(200, $rule);
-                    }
-                }
+    /* automatic outbound rules */
+    foreach (filter_auto_source_nat($fw) as $interface => $networks) {
+        foreach ([500, null] as $dstport) {
+            $rule = [
+                'descr' => 'Automatic outbound rule',
+                'destination' => ['any' => true],
+                'dstport' => $dstport,
+                'interface' => $interface,
+                'ipprotocol' => 'inet',
+                'log' => !empty($config['syslog']['logoutboundnat']),
+                'staticnatport' => !empty($dstport),
+            ];
+
+            foreach ($networks as $network => $unused) {
+                $rule['source'] = ['network' => $network];
+                $fw->registerSourceNatRule(200, $rule);
             }
         }
     }
 
-    // prevent redirection on ports with "lock out" protection
-    foreach (filter_core_get_antilockout() as $lockoutif => $lockoutprts) {
-        foreach ($lockoutprts as $port) {
-            $rule = array(
-                'interface' => $lockoutif,
-                "nordr" => true,
-                "protocol" => "tcp",
-                'destination' => array('network' => "{$lockoutif}ip", 'port' => $port),
-                "descr" => "Anti lockout, prevent redirects for protected ports to this interface ip"
-            );
-            $fw->registerForwardRule(300, $rule);
-        }
+    /* prevent redirection on ports with "lock out" protection */
+    foreach (filter_auto_destination_nat() as $rule) {
+        $fw->registerDestinationNatRule(300, $rule);
     }
 
     foreach ((new OPNsense\Firewall\DNat())->rule->sortedBy(['sequence']) as $key => $rule) {
-        $fw->registerForwardRule(600, $rule->getNodeContent());
+        $node = $rule->getNodeContent();
+        $node['local-port'] = $rule->{'local-port'}->normalizedPort();
+        $fw->registerDestinationNatRule(600, $node);
     }
+
     /**
      * XXX: Apply schedules on all installed rules so we can use both legacy and MVC ones.
      * Eventually this needs to be replaced, but as this requires legacy code, we cannot do that easily now
@@ -380,9 +360,8 @@ function filter_configure_sync($verbose = false, $load_aliases = true)
         $limitrules .= "set hostid {$current_hostid}\n";
     }
 
-    if (!empty($config['system']['pfdebug'])) {
-        $limitrules .= "set debug {$config['system']['pfdebug']}\n";
-    }
+    $pfdebug = !empty($config['system']['pfdebug']) ? $config['system']['pfdebug'] : 'urgent';
+    $limitrules .= "set debug {$pfdebug}\n";
 
     if (!empty($config['system']['keepcounters'])) {
         $limitrules .= "set keepcounters\n";
@@ -493,75 +472,77 @@ function filter_generate_scrubbing(&$FilterIflist)
     $scrubrules = '';
 
     /* custom rules must be first */
-    if (!empty($config['filter']['scrub']['rule'])) {
-        foreach ($config['filter']['scrub']['rule'] as $scrub_rule) {
-            if (!isset($scrub_rule['disabled'])) {
-                $scrub_rule_out = !empty($scrub_rule['noscrub']) ? "no " : "";
-                $scrub_rule_out .= "scrub";
-                $scrub_rule_out .= !empty($scrub_rule['direction']) ? " " . $scrub_rule['direction'] : "";
-                $scrub_rule_out .= " on ";
-                $interfaces = array();
-                foreach (explode(',', $scrub_rule['interface']) as $interface) {
-                    if (!empty($FilterIflist[$interface]['if'])) {
-                        $interfaces[] = $FilterIflist[$interface]['if'];
-                    }
-                }
-                $scrub_rule_out .= count($interfaces) > 1 ? "{ " . implode(' ', $interfaces) . " } " : $interfaces[0];
-                switch ($scrub_rule['proto']) {
-                    case 'any':
-                        break;
-                    case 'tcp/udp':
-                        $scrub_rule_out .= " proto {tcp udp}";
-                        break;
-                    default:
-                        $scrub_rule_out .= " proto " . $scrub_rule['proto'];
-                        break;
-                }
-                $scrub_rule_out .= " from ";
-                if (is_alias($scrub_rule['src'])) {
-                    $scrub_rule_out .= !empty($scrub_rule['srcnot']) ? "!" : "";
-                    $scrub_rule_out .= '$' . $scrub_rule['src'];
-                } elseif (is_ipaddr($scrub_rule['src'])) {
-                    $scrub_rule_out .= !empty($scrub_rule['srcnot']) ? "!" : "";
-                    $scrub_rule_out .= $scrub_rule['src'] . "/" . $scrub_rule['srcmask'];
-                } else {
-                    $scrub_rule_out .= "any";
-                }
-                if (!empty($scrub_rule['srcport']) && is_alias($scrub_rule['srcport'])) {
-                    $scrub_rule_out .= " port $" . $scrub_rule['srcport'];
-                } else {
-                    $scrub_rule_out .= !empty($scrub_rule['srcport']) ?  " port " . $scrub_rule['srcport'] : "";
-                }
-                $scrub_rule_out .= " to ";
-                if (is_alias($scrub_rule['dst'])) {
-                    $scrub_rule_out .= !empty($scrub_rule['dstnot']) ? "!" : "";
-                    $scrub_rule_out .= '$' . $scrub_rule['dst'];
-                } elseif (is_ipaddr($scrub_rule['dst'])) {
-                    $scrub_rule_out .= !empty($scrub_rule['dstnot']) ? "!" : "";
-                    $scrub_rule_out .= $scrub_rule['dst'] . "/" . $scrub_rule['dstmask'];
-                } else {
-                    $scrub_rule_out .= "any";
-                }
-                if (!empty($scrub_rule['dstport']) && is_alias($scrub_rule['dstport'])) {
-                    $scrub_rule_out .= " port $" . $scrub_rule['dstport'];
-                } else {
-                    $scrub_rule_out .= !empty($scrub_rule['dstport']) ?  " port " . $scrub_rule['dstport'] : "";
-                }
-                if (empty($scrub_rule['noscrub'])) {
-                    $scrub_rule_out .= !empty($scrub_rule['no-df']) ? " no-df " : "";
-                    $scrub_rule_out .= !empty($scrub_rule['random-id']) ? " random-id " : "";
-                    $scrub_rule_out .= !empty($scrub_rule['max-mss']) ? " max-mss " . $scrub_rule['max-mss'] .  " " : "";
-                    $scrub_rule_out .= !empty($scrub_rule['min-ttl']) ? " min-ttl " . $scrub_rule['min-ttl'] .  " " : "";
-                    $scrub_rule_out .= !empty($scrub_rule['set-tos']) ? " set-tos " . $scrub_rule['set-tos'] .  " " : "";
-                }
-                $scrub_rule_out .= "\n";
-                if (count($interfaces) == 0) {
-                    # unknown interface, skip rule
-                    $scrubrules .= "#";
-                }
-                $scrubrules .= $scrub_rule_out;
+    foreach (config_read_array('filter', 'scrub', 'rule', false) as $scrub_rule) {
+        if (isset($scrub_rule['disabled'])) {
+            continue;
+        }
+
+        $scrub_rule_out = !empty($scrub_rule['noscrub']) ? "no " : "";
+        $scrub_rule_out .= "scrub";
+        $scrub_rule_out .= !empty($scrub_rule['direction']) ? " " . $scrub_rule['direction'] : "";
+        $interfaces = [];
+        foreach (explode(',', $scrub_rule['interface']) as $interface) {
+            if (!empty($FilterIflist[$interface]['if'])) {
+                $interfaces[] = $FilterIflist[$interface]['if'];
             }
         }
+
+        if (count($interfaces) != 0) {
+            $scrub_rule_out .= ' on { ' . implode(' ', $interfaces) . ' } ';
+        } else {
+            # unknown interface, skip rule
+            $scrubrules .= "#";
+        }
+        switch ($scrub_rule['proto']) {
+            case 'any':
+                break;
+            case 'tcp/udp':
+                $scrub_rule_out .= " proto {tcp udp}";
+                break;
+            default:
+                $scrub_rule_out .= " proto " . $scrub_rule['proto'];
+                break;
+        }
+        $scrub_rule_out .= " from ";
+        if (is_alias($scrub_rule['src'])) {
+            $scrub_rule_out .= !empty($scrub_rule['srcnot']) ? "!" : "";
+            $scrub_rule_out .= '$' . $scrub_rule['src'];
+        } elseif (is_ipaddr($scrub_rule['src'])) {
+            $scrub_rule_out .= !empty($scrub_rule['srcnot']) ? "!" : "";
+            $scrub_rule_out .= $scrub_rule['src'] . "/" . $scrub_rule['srcmask'];
+        } else {
+            $scrub_rule_out .= "any";
+        }
+        if (!empty($scrub_rule['srcport']) && is_alias($scrub_rule['srcport'])) {
+            $scrub_rule_out .= " port $" . $scrub_rule['srcport'];
+        } else {
+            $scrub_rule_out .= !empty($scrub_rule['srcport']) ?  " port " . $scrub_rule['srcport'] : "";
+        }
+        $scrub_rule_out .= " to ";
+        if (is_alias($scrub_rule['dst'])) {
+            $scrub_rule_out .= !empty($scrub_rule['dstnot']) ? "!" : "";
+            $scrub_rule_out .= '$' . $scrub_rule['dst'];
+        } elseif (is_ipaddr($scrub_rule['dst'])) {
+            $scrub_rule_out .= !empty($scrub_rule['dstnot']) ? "!" : "";
+            $scrub_rule_out .= $scrub_rule['dst'] . "/" . $scrub_rule['dstmask'];
+        } else {
+            $scrub_rule_out .= "any";
+        }
+        if (!empty($scrub_rule['dstport']) && is_alias($scrub_rule['dstport'])) {
+            $scrub_rule_out .= " port $" . $scrub_rule['dstport'];
+        } else {
+            $scrub_rule_out .= !empty($scrub_rule['dstport']) ?  " port " . $scrub_rule['dstport'] : "";
+        }
+        if (empty($scrub_rule['noscrub'])) {
+            $scrub_rule_out .= !empty($scrub_rule['no-df']) ? " no-df " : "";
+            $scrub_rule_out .= !empty($scrub_rule['random-id']) ? " random-id " : "";
+            $scrub_rule_out .= !empty($scrub_rule['max-mss']) ? " max-mss " . $scrub_rule['max-mss'] .  " " : "";
+            $scrub_rule_out .= !empty($scrub_rule['min-ttl']) ? " min-ttl " . $scrub_rule['min-ttl'] .  " " : "";
+            $scrub_rule_out .= !empty($scrub_rule['set-tos']) ? " set-tos " . $scrub_rule['set-tos'] .  " " : "";
+        }
+        $scrub_rule_out .= "\n";
+
+        $scrubrules .= $scrub_rule_out;
     }
 
     /* scrub per interface options */

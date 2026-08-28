@@ -66,42 +66,145 @@
 
         // read interface from URL hash once, for the first grid load
         let pendingUrlInterface = getUrlHash('interface') || null;
+        let previousGroupType = null;
+        let currentGroupType = null;
 
-        // Lives outside the grid, so the logic of the response handler can be changed after grid initialization
-        function dynamicResponseHandler(resp) {
-            // convert the flat rows into a tree view (if enabled)
-            if (!treeViewEnabled) {
-                return resp;
+        $("#interface_select").on('changed.bs.select', function() {
+            const groupData = $(this).data();
+            currentGroupType = Object.entries(groupData.store)
+                                .find(([, group]) => group.items?.some(item => item.value === $("#interface_select").val()))
+                                ?.[0] ?? null;
+        });
+
+        const ruleTypeMap = [
+            { idx: 0, uuid: "auto0", label: "{{ lang._('Automatically generated rules') }}", icon: "fa-magic", tooltip: "{{ lang._('Automatically generated rules') }}", color: "text-secondary", groupType: null },
+            { idx: 2, uuid: "floating", label: "{{ lang._('Floating rules') }}", icon: "fa-layer-group", tooltip: "{{ lang._('Floating rule') }}", color: "text-primary", groupType: "floating" },
+            { idx: 3, uuid: "group", label: "{{ lang._('Group rules') }}", icon: "fa-sitemap", tooltip: "{{ lang._('Group rule') }}", color: "text-warning", groupType: "groups" },
+            { idx: 4, uuid: "interface", label: "{{ lang._('Interface rules') }}", icon: "fa-ethernet", tooltip: "{{ lang._('Interface rule') }}", color: "text-info", groupType: "interfaces" },
+            { idx: 5, uuid: "auto1", label: "{{ lang._('Automatically generated rules') }}", icon: "fa-magic", tooltip: "{{ lang._('Automatically generated rules') }}", color: "text-secondary", groupType: null },
+            { idx: 6, uuid: "defunct", label: "{{ lang._('Defunct rules') }}", icon: "fa-exclamation-triangle", tooltip: "{{ lang._('Defunct rules that are not processed') }}", color: "text-secondary", groupType: null },
+        ];
+
+        // XXX: The "prio_group.sequence" combination in "sort_order" (300000.0000010) is not always static, e.g. in group rules it could also be (300010.0000010).
+        //      An exact match is not always possible, using the first digit is the best assumption currently.
+        const getRuleTypeDigit = function(row) {
+            const sortOrder = row.sort_order ? row.sort_order.toString() : "";
+            return Number(sortOrder.charAt(0));
+        };
+
+        const getRuleType = function(row) {
+            return buckets.find(r => r.idx === getRuleTypeDigit(row)) || null;
+        };
+
+        let buckets = [];
+        function createBucket(props) {
+            return {
+                isGroup: true,
+                children: [],
+                ...props
+            };
+        }
+
+        function responseHandler(response) {
+            // recursively clear children but keep buckets intact
+            const clear = (buckets) => {
+                for (const bucket of buckets) {
+                    if (Array.isArray(bucket.children)) {
+                        clear(bucket.children);
+                        bucket.children = [];
+                    }
+                }
             }
 
-            const buckets = [];
-            let current = null;
+            clear(buckets);
 
-            resp.rows.forEach(r => {
-                // readable label used for grouping
-                const label = (r["%categories"] || r.categories || "");
+            // (re)initialize missing buckets
+            for (const type of ruleTypeMap) {
+                let bucket = buckets.some(bucket => bucket.idx === type.idx);
 
-                // start a new bucket whenever the label changes
-                if (!current || current._label !== label) {
-                    current = {
-                        // ensure uuid is as unique as possible for persistence handling
-                        uuid           : `${String(r.uuid).replace(/-/g, '')}`,
-                        isGroup        : true,
-                        _label         : label,          // internal
-                        children       : []
-                    };
+                if (!bucket) {
+                    buckets.push(createBucket({
+                        ...type,
+                        _persistence: false,
+                        _expanded: false,
+                        categories: type.label,
+                        category_colors: [{ name: type.label }],
+                    }));
+                    buckets = buckets.sort((a, b) => a.idx - b.idx);
+                }
+            }
 
-                    // copy the category info from the first child to use as parent
-                    current.categories      = label;
-                    current.category_colors = r.category_colors || [];
+            // determine tree expansion state of top-level buckets
+            for (const bucket of buckets) {
+                if (["auto0", "auto1", "defunct"].includes(bucket.uuid)) {
+                    bucket._expanded = false;
+                } else if (bucket.groupType === currentGroupType || currentGroupType === "any") {
+                    bucket._expanded = true;
+                } else if (currentGroupType !== previousGroupType) {
+                    bucket._expanded = false;
+                }
+            }
 
-                    buckets.push(current);
+            const indexMap = {};
+            let lastBucketId = null;
+            response.rows.forEach(row => {
+                // Find bucket this row belongs to. If it doesn't exist, create it.
+                let bucket = getRuleType(row);
+
+                const categoryLabel = row["%categories"] || row.categories || "";
+                if (treeViewEnabled && row.is_automatic !== true && categoryLabel !== "") {
+                    // We're dealing with a category, create bucket id based on this row
+                    const bucketId = `${bucket.uuid}category${String(categoryLabel).replace(/[^a-z0-9]/gi, '')}`;
+
+                    // categories with the same name may appear multiple times due to ordering,
+                    // indexMap tracks these to uniquely identify them.
+                    if (!(bucketId in indexMap)) {
+                        indexMap[bucketId] = 0;
+                    }
+
+                    if (bucketId !== lastBucketId && lastBucketId !== null) {
+                        // moved to next category
+                        indexMap[lastBucketId]++;
+                    }
+
+                    const id = `${bucketId}${indexMap[bucketId]}`;
+                    let newBucket = bucket.children.find(child => child.uuid === id);
+
+                    if (!newBucket) {
+                        newBucket = createBucket({
+                            uuid: id,
+                            _persistence: true,
+                            categories: categoryLabel,
+                            category_colors: row.category_colors,
+                        });
+                        bucket.children.push(newBucket);
+                    }
+
+                    bucket = newBucket;
+                    lastBucketId = bucketId;
                 }
 
-                current.children.push(r);
+                bucket.children.push(row);
             });
 
-            return Object.assign({}, resp, { rows: buckets });
+            const removeEmptyGroups = (items) => {
+                for (let i = items.length - 1; i >= 0; i--) {
+                    const item = items[i];
+
+                    if (Array.isArray(item.children)) {
+                        if (item.children.length === 0) {
+                            items.splice(i, 1);
+                        } else {
+                            removeEmptyGroups(item.children);
+                        }
+                    }
+                }
+            };
+
+            removeEmptyGroups(buckets);
+            previousGroupType = currentGroupType;
+
+            return Object.assign({}, response, { rows: buckets });
         }
 
         $('#download_rules').click(function(e){
@@ -122,6 +225,7 @@
                 dataTree              : true,
                 dataTreeChildField    : "children",
                 dataTreeElementColumn : "categories",
+                dataTreeStartExpanded : (row, level) => row.getData()._expanded,
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const $element = $(row.getElement());
@@ -148,8 +252,10 @@
                 }
             },
             options: {
+                virtualDOM: true,
                 responsive: true,
                 sorting: false,
+                rowCount: [500,20,50,100,200,1000,2000,-1],
                 initialSearchPhrase: getUrlHash('search'),
                 requestHandler: function(request){
                     // Add category selectpicker
@@ -174,14 +280,17 @@
                     return request;
                 },
                 // convert the flat rows into a tree view
-                responseHandler: dynamicResponseHandler,
+                responseHandler: responseHandler,
 
                 headerFormatters: {
                     enabled: function (column) {
                         return '<i class="fa-solid fa-fw fa-check-square" data-toggle="tooltip" title="{{ lang._('Enabled') }}"></i>';;
                     },
                     interface: function (column) {
-                        return '<i class="fa-solid fa-fw fa-network-wired" data-toggle="tooltip" title="{{ lang._('Network interface') }}"></i>';
+                        return '<span class="text-nowrap" data-toggle="tooltip" title="{{ lang._('Interface (rule)') }}"><i class="fa-solid fa-fw fa-network-wired"></i> {{ lang._('Rule') }}</span>';
+                    },
+                    'received-on': function (column) {
+                        return '<span class="text-nowrap" data-toggle="tooltip" title="{{ lang._('Interface (origin)') }}"><i class="fa-solid fa-fw fa-network-wired"></i> {{ lang._('Origin') }}</span>';
                     },
                     evaluations: function (column) {
                         return '<i class="fa-solid fa-fw fa-bullseye" data-toggle="tooltip" title="{{ lang._('Number of rule evaluations') }}"></i>';
@@ -229,84 +338,6 @@
                     },
                 },
                 formatters:{
-                    commands: function (column, row) {
-                        // All formatters except category must skip processing bucket rows in tree view
-                        if (row.isGroup) {
-                            return "";
-                        }
-                        const rowId = row.uuid || "";
-                        const hasUuid = rowId.includes("-");
-
-                        const logSearchCommand = (rid, log) => {
-                            const loggingEnabled = log === '1' || log === true;
-                            if (!loggingEnabled) return '';
-
-                            return `
-                                <a href="/ui/diagnostics/firewall/log#${new URLSearchParams({field:'rid',operator:'=',value:rid})}"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                class="btn btn-xs btn-default bootgrid-tooltip"
-                                title="{{ lang._('View log entries for this rule') }}">
-                                    <i class="fa fa-fw fa-search"></i>
-                                </a>
-                            `;
-                        };
-
-                        // If UUID is invalid, its an internal rule, use the #ref field to show a lookup button.
-                        if (!hasUuid) {
-                            const ref = (row["ref"] || "");
-
-                            // optional lookup button if ref exists
-                            const lookupRefCommand = ref ? `
-                                <a href="/${ref}" target="_blank" rel="noopener noreferrer"
-                                class="btn btn-xs btn-default bootgrid-tooltip"
-                                title="{{ lang._('Lookup rule reference') }}">
-                                    <i class="fa fa-fw fa-link"></i>
-                                </a>
-                            ` : '';
-
-                            return `
-                                ${logSearchCommand(rowId, row.log)}
-                                ${lookupRefCommand}
-                            `;
-                        }
-
-                        return `
-                            <button type="button" class="btn btn-xs btn-default command-move_before
-                                bootgrid-tooltip" data-row-id="${rowId}"
-                                title="{{ lang._('Move selected rule before this rule') }}">
-                                <span class="fa fa-fw fa-arrow-left"></span>
-                            </button>
-
-                            <button type="button" class="btn btn-xs btn-default command-toggle_log bootgrid-tooltip"
-                                data-row-id="${row.uuid}" data-value="${row.log}"
-                                title="${row.log == '1'
-                                    ? '{{ lang._("Disable Logging") }}'
-                                    : '{{ lang._("Enable Logging") }}'}">
-                                <i class="fa fa-fw ${row.log == '1' ? 'fa-bell' : 'fa-bell-slash'}"></i>
-                            </button>
-
-                            <button type="button" class="btn btn-xs btn-default command-edit
-                                bootgrid-tooltip" data-row-id="${rowId}"
-                                title="{{ lang._('Edit') }}">
-                                <span class="fa fa-fw fa-pencil"></span>
-                            </button>
-
-                            <button type="button" class="btn btn-xs btn-default command-copy
-                                bootgrid-tooltip" data-row-id="${rowId}"
-                                title="{{ lang._('Clone') }}">
-                                <span class="fa fa-fw fa-clone"></span>
-                            </button>
-
-                            <button type="button" class="btn btn-xs btn-default command-delete
-                                bootgrid-tooltip" data-row-id="${rowId}"
-                                title="{{ lang._('Delete') }}">
-                                <span class="fa fa-fw fa-trash-o"></span>
-                            </button>
-
-                            ${logSearchCommand(rowId, row.log)}
-                        `;
-                    },
                     // Disable rowtoggle for internal rules
                     rowtoggle: function (column, row) {
                         if (row.isGroup) {
@@ -314,7 +345,7 @@
                         }
 
                         const rowId = row.uuid || '';
-                        if (!rowId.includes('-')) {
+                        if (!rowId.includes('-') || getRuleTypeDigit(row) === 6) {
                             return '';
                         }
 
@@ -336,38 +367,46 @@
 
                         if (
                             row[column.id] !== undefined &&
-                            !['', 'any', 'None'].includes(row[column.id])
+                            !['', 'any', 'None', 'inet46'].includes(row[column.id])
                         ) {
                             return row["%" + column.id] || row[column.id];
                         } else {
                             return '*';
                         }
                     },
-                    // The category formatter is special as it renders differently for the bucket row
+                    // Bucket rows reuse the category column because Tabulator only renders one
+                    // formatter per cell, so both category buckets and rule type buckets are
+                    // represented here.
                     category: function (column, row) {
                         const isGroup = row.isGroup;
                         const hasCategories = row.categories && Array.isArray(row.category_colors);
 
+                        // Rows without category metadata render nothing in this column.
+                        // This also avoids creating a fake label for rules that
+                        // are intentionally kept directly below their rule type bucket.
                         if (!hasCategories) {
-
-                            return isGroup
-                                ? `<span class="category-icon category-cell">
-                                    <i class="fa fa-fw fa-tag"></i>
-                                    <strong>{{ lang._('Uncategorized') }}</strong>
-                                    <span class="badge chip"
-                                            style="margin-left:6px;">${(row.children && row.children.length) || 0}</span>
-                                </span>`
-                                : '';
+                            return '';
                         }
 
                         const categories = row.category_colors || [];
 
                         const icons = categories.map(cat => {
-                            const bgColor = cat.color ? ` style="color:${cat.color};"` : '';
+                            /*
+                            * Top-level tree icons, e.g. automatic/floating/interface rules, are
+                            * resolved here as well because each row can only use one formatter for
+                            * this column. Rule type buckets provide a synthetic category entry
+                            * whose name matches ruleTypeMap, while real category buckets continue
+                            * to render normal category tag icons.
+                            */
+                            const ruleType = ruleTypeMap.find(r => r.uuid === row.uuid);
 
+                            const name = ruleType ? ruleType.tooltip : (cat.name || "");
+                            const icon = ruleType ? ruleType.icon : "fa-fw fa-tag";
+                            const classColor = ruleType? ruleType.color : '';
+                            const bgColor = cat.color ? ` style="color:${cat.color};"` : '';
                             return `
-                                <span class="category-icon" data-toggle="tooltip" title="${cat.name}">
-                                    <i class="fa fa-fw fa-tag"${bgColor}></i>
+                                <span class="category-icon" data-toggle="tooltip" title="${htmlSafe(name)}">
+                                    <i class="fa fa-fw ${icon} ${classColor}" ${bgColor}></i>
                                 </span>`;
                         }).join(' ');
 
@@ -375,8 +414,6 @@
                             ? `<span class="category-cell">
                                     <span class="category-cell-content">
                                         <strong>${icons} ${categories.map(cat => cat.name).join(', ')}</strong>
-                                        <span class="badge chip"
-                                                style="margin-left:6px;">${(row.children && row.children.length) || 0}</span>
                                     </span>
                             </span>`
                             : icons;
@@ -394,7 +431,10 @@
 
                         // Only single interfaces can be negated
                         if (!interfaces.includes(",")) {
-                            return (row.interfacenot == 1 ? "! " : "") + interfaces;
+                            const invertField = Object.keys(row).find(
+                                field => field.startsWith(column.id) && field.endsWith("not")
+                            );
+                            return (row[invertField] == 1 ? "! " : "") + interfaces;
                         }
 
                         const interfaceList = interfaces.split(",");
@@ -416,47 +456,36 @@
                         let result = "";
 
                         // Rule Type Icons (Determined by first digit of sort_order)
-                        const ruleTypeIcons = {
-                            '0': { icon: "fa-magic", tooltip: "{{ lang._('Automatic Rule') }}", color: "text-secondary" },
-                            '1': { icon: "fa-magic", tooltip: "{{ lang._('Automatic Rule') }}", color: "text-secondary" },
-                            '2': { icon: "fa-layer-group", tooltip: "{{ lang._('Floating Rule') }}", color: "text-primary" },
-                            '3': { icon: "fa-sitemap", tooltip: "{{ lang._('Group Rule') }}", color: "text-warning" },
-                            '4': { icon: "fa-ethernet", tooltip: "{{ lang._('Interface Rule') }}", color: "text-info" },
-                            '5': { icon: "fa-magic", tooltip: "{{ lang._('Automatic Rule') }}", color: "text-secondary" },
-                        };
+                        const ruleType = getRuleType(row);
 
-                        const sortOrder = row.sort_order ? row.sort_order.toString() : "";
-                        if (sortOrder.length > 0) {
-                            const typeDigit = sortOrder.charAt(0);
-                            if (ruleTypeIcons[typeDigit]) {
-                                result += `<i class="fa ${ruleTypeIcons[typeDigit].icon} fa-fw ${ruleTypeIcons[typeDigit].color}"
-                                            data-toggle="tooltip" title="${ruleTypeIcons[typeDigit].tooltip}"></i> `;
-                            }
+                        if (ruleType) {
+                            result += `<i class="fa ${ruleType.icon} fa-fw ${ruleType.color}"
+                                        data-toggle="tooltip" title="${ruleType.tooltip}"></i> `;
                         }
 
                         // Action
-                        if (row.action.toLowerCase() === "block") {
-                            result += '<i class="fa fa-times fa-fw text-danger" data-toggle="tooltip" title="{{ lang._("Block") }}"></i> ';
-                        } else if (row.action.toLowerCase() === "reject") {
-                            result += '<i class="fa fa-times-circle fa-fw text-danger" data-toggle="tooltip" title="{{ lang._("Reject") }}"></i> ';
+                        if (row.action === "block") {
+                            result += `<i class="fa fa-times fa-fw text-danger" data-toggle="tooltip" title="${row['%action']}"></i> `;
+                        } else if (row.action === "reject") {
+                            result += `<i class="fa fa-times-circle fa-fw text-danger" data-toggle="tooltip" title="${row['%action']}"></i> `;
                         } else {
-                            result += '<i class="fa fa-play fa-fw text-success" data-toggle="tooltip" title="{{ lang._("Pass") }}"></i> ';
+                            result += `<i class="fa fa-play fa-fw text-success" data-toggle="tooltip" title="${row['%action']}"></i> `;
                         }
 
                         // Direction
-                        if (row.direction.toLowerCase() === "in") {
-                            result += '<i class="fa fa-long-arrow-right fa-fw text-info" data-toggle="tooltip" title="{{ lang._("In") }}"></i> ';
-                        } else if (row.direction.toLowerCase() === "out") {
-                            result += '<i class="fa fa-long-arrow-left fa-fw" data-toggle="tooltip" title="{{ lang._("Out") }}"></i> ';
+                        if (row.direction === "in") {
+                            result += `<i class="fa fa-long-arrow-right fa-fw text-info" data-toggle="tooltip" title="${row['%direction']}"></i> `;
+                        } else if (row.direction === "out") {
+                            result += `<i class="fa fa-long-arrow-left fa-fw" data-toggle="tooltip" title="${row['%direction']}"></i> `;
                         } else {
-                            result += '<i class="fa fa-exchange fa-fw" data-toggle="tooltip" title="{{ lang._("Any") }}"></i> ';
+                            result += `<i class="fa fa-exchange fa-fw" data-toggle="tooltip" title="${row['%direction']}"></i> `;
                         }
 
                         // Quick match
                         if (row.quick == 0) {
-                            result += '<i class="fa fa-flash fa-fw text-muted" data-toggle="tooltip" title="{{ lang._("Last match") }}"></i> ';
+                            result += `<i class="fa fa-flash fa-fw text-muted" data-toggle="tooltip" title="{{ lang._("Last match") }}"></i> `;
                         } else {
-                            result += '<i class="fa fa-flash fa-fw text-warning" data-toggle="tooltip" title="{{ lang._("First match") }}"></i> ';
+                            result += `<i class="fa fa-flash fa-fw text-warning" data-toggle="tooltip" title="{{ lang._("First match") }}"></i> `;
                         }
 
                         // XXX: Advanced fields all have different default values, so it cannot be generalized completely
@@ -484,7 +513,7 @@
                         let tooltip;
                         if (usedAdvancedFields.length > 0) {
                             iconClass = "text-warning";
-                            tooltip = `{{ lang._("Advanced mode enabled") }}<br>${usedAdvancedFields.join("<br>")}`;
+                            tooltip = htmlSafe(`{{ lang._("Advanced mode enabled") }}<br>${usedAdvancedFields.join("<br>")}`);
                         } else {
                             iconClass = "text-muted";
                             tooltip = "{{ lang._('Advanced mode disabled') }}";
@@ -519,7 +548,7 @@
                             if (aliasInfo.isAlias) {
                                 const tooltipHtml = aliasInfo.summary || aliasInfo.description || aliasInfo.value || "";
                                 return `
-                                    <span data-toggle="tooltip" data-html="true" title="${tooltipHtml}">${aliasInfo.value}&nbsp;</span>
+                                    <span data-toggle="tooltip" data-html="true" title="${htmlSafe(tooltipHtml)}">${aliasInfo.value}&nbsp;</span>
                                     <a href="/ui/firewall/alias/index/${encodeURIComponent(aliasInfo.value)}"
                                     data-toggle="tooltip" title="{{ lang._('Edit alias') }}">
                                     <i class="fa fa-fw fa-list"></i>
@@ -621,7 +650,20 @@
                     },
                     sequence: 500
                 },
+                lookup_ref: {
+                    filter: (cell) => commandFilter(cell, "lookup_ref"),
+                    classname: "fa fa-fw fa-link",
+                    title: "{{ lang._('Lookup rule reference') }}",
+                    sequence: 10,
+                    method: function(event, cell) {
+                        const row = cell.getData();
+                        if (row?.ref) {
+                            window.open(`/${row.ref}`, "_blank", "noopener,noreferrer");
+                        }
+                    },
+                },
                 move_before: {
+                    filter: (cell) => commandFilter(cell, "move_before"),
                     method: function(event) {
                         // Ensure exactly one rule is selected to be moved
                         const selected = $("#{{ formGridFilterRule['table_id'] }}").bootgrid("getSelectedRows");
@@ -673,9 +715,11 @@
                     sequence: 10
                 },
                 toggle_log: {
-                    method: function(event) {
+                    filter: (cell) => commandFilter(cell, "toggle_log"),
+                    method: function(event, cell) {
                         const uuid = $(this).data("row-id");
-                        const log = String(+$(this).data("value") ^ 1);
+                        const row = cell.getData();
+                        const log = String(+row.log ^ 1);
                         ajaxCall(
                             `/api/firewall/filter/toggle_rule_log/${uuid}/${log}`,
                             {},
@@ -695,16 +739,154 @@
                             'POST'
                         );
                     },
-                    classname: 'fa fa-fw fa-exclamation-circle',
-                    title: "{{ lang._('Toggle Logging') }}",
+                    classname: (cell) => {
+                        const row = cell.getData();
+                        return (row.log === "1" || row.log === true) ? "fa fa-fw fa-bell" : "fa fa-fw fa-bell-slash";
+                    },
+                    title: (cell) => {
+                        const row = cell.getData();
+                        return (row.log === "1" || row.log === true) ? '{{ lang._("Disable Logging") }}' : '{{ lang._("Enable Logging") }}';
+                    },
                     sequence: 20
+                },
+                log_search: {
+                    filter: (cell) => commandFilter(cell, "log_search"),
+                    classname: "fa fa-fw fa-search",
+                    title: "{{ lang._('View log entries for this rule') }}",
+                    sequence: 999,
+                    method: function(event, cell) {
+                        const row = cell.getData();
+                        const params = new URLSearchParams({field:'rid',operator:'=',value:row.uuid || ""});
+                        window.open(`/ui/diagnostics/firewall/log#${params}`, "_blank", "noopener,noreferrer");
+                    }
+                },
+                delete: {
+                    filter: (cell) => commandFilter(cell, "delete"),
+                },
+                copy: {
+                    filter: (cell) => commandFilter(cell, "copy"),
+                },
+                edit: {
+                    filter: (cell) => commandFilter(cell, "edit"),
                 }
             },
 
         });
 
+        function commandFilter(cell, type = "") {
+            const row = cell.getData();
+            const hasUuid = row.uuid?.includes("-") ?? false;
+
+            if (row.isGroup) return false;
+
+            if (getRuleTypeDigit(row) === 6 && !["delete", "copy"].includes(type)) {
+                // Defunct rules can only be deleted or copied.
+                return false;
+            }
+
+            if (type === "lookup_ref") {
+                // lookup_ref only allowed without a valid UUID
+                return !hasUuid;
+            }
+
+            if (type === "log_search") {
+                // requires both a UUID and enabled logging
+                return hasUuid && (row.log === "1" || row.log === true);
+            }
+
+            return hasUuid;
+        }
+
+        function onTreeEvent(row, open) {
+            const getBucketById = (buckets, uuid) => {
+                for (const bucket of buckets) {
+                    if (bucket.uuid === uuid) {
+                        return bucket;
+                    }
+
+                    if (Array.isArray(bucket.children)) {
+                        const found = getBucketById(bucket.children, uuid);
+
+                        if (found) {
+                            return found;
+                        }
+                    }
+                }
+
+                return null;
+            }
+
+            const bucket = getBucketById(buckets, row.getData().uuid);
+            if ('_expanded' in bucket) {
+                bucket._expanded = open;
+            }
+        }
+
+        // persist expansion state of rule type categories
+        // during the lifetime of the page, resets on page reload
+        const table = grid.bootgrid('getTable');
+        table.on('dataTreeRowExpanded', (row) => onTreeEvent(row, true));
+        table.on('dataTreeRowCollapsed', (row) => onTreeEvent(row, false));
+
+        // "selectableRowsCheck" doesn't execute when the header checkbox is used,
+        // work around this by checking on row selection
+        table.on('rowSelected', (row) => {
+            const data = row.getData();
+            if (data.isGroup) {
+                // "select all" triggered, deselect current row since it's a group, but select any nested row that isn't a group recursively
+                row.deselect();
+                const children = row.getTreeChildren();
+                const getAllRows = (rows) => {
+                    const result = [];
+
+                    for (const row of rows) {
+                        const rowData = row.getData();
+                        // do not select rows that aren't visible to avoid confusion (_expanded == false)
+                        if (!rowData.isGroup && rowData.uuid.includes("-") && row.getTreeParent().getData()._expanded) {
+                            result.push(row);
+                            continue;
+                        }
+
+                        result.push(...getAllRows(row.getTreeChildren() || []));
+                    }
+
+                    return result;
+                };
+
+                for (const selectableRow of getAllRows(children)) {
+                    selectableRow.select();
+                }
+            }
+        });
+
         grid.on('loaded.rs.jquery.bootgrid', function () {
             updateStatisticColumns(); // ensures inspect columns are consistent after reload
+
+            // remove empty ruleset message banner if applicable
+            $('#{{formGridFilterRule["table_id"]}}-banner').remove();
+
+            // check if interface/group type is selected, and if so, display an in-table message if there are no rules defined
+            if (
+                (currentGroupType === "groups" || currentGroupType === "interfaces") &&
+                !buckets.find(b => b.groupType === currentGroupType) &&
+                $('#{{formGridFilterRule["table_id"]}}').bootgrid('getSearchPhrase') === ""
+            ) {
+                let ifLabel = '';
+                for (const group of Object.values($('#interface_select').data().store)) {
+                    const item = group.items.find(item => item.value === $('#interface_select').val());
+                    if (item) {
+                        ifLabel = item.label;
+                        break;
+                    }
+                }
+                $("#{{formGridFilterRule['table_id']}}-header")
+                    .after($('<div id="{{formGridFilterRule["table_id"]}}-banner" class="alert alert-info text-center __ml __mr" style="font-weight: 400;">')
+                    .text(`
+                        {{ lang._('No %s rules have been defined. ') | format('${ifLabel}') }}
+                        {{ lang._('All incoming connections on this interface will be blocked until you add a pass rule. ') }}
+                        {{ lang._('Exceptions for automatically generated or floating rules may apply.') }}
+                    `));
+            }
         });
 
         // Track if user has actually changed a dropdown, or it was the controller
@@ -733,7 +915,7 @@
                             label: row.name,
                             id: row.used > 0 ? row.uuid : undefined,
                             'data-content': row.used > 0
-                                ? `<span><span class="label label-sm"${bgColor}>${row.used}</span> ${optVal}</span>`
+                                ? `<span>${optVal} <span class="label label-sm"${bgColor}>${row.used}</span></span>`
                                 : undefined
                         };
                     });
@@ -752,40 +934,34 @@
         // Populate interface selectpicker
         function populateInterfaceSelectpicker() {
             const currentSelection = $("#interface_select").val();
+
             return $('#interface_select').fetch_options(
                 '/api/firewall/filter/get_interface_list',
                 {},
                 function (data) {
                     for (const groupKey in data) {
                         const group = data[groupKey];
-                        group.items = group.items.map(item => {
-                            const count = item.count ?? 0;
-                            const label = (item.label || '');
-                            const subtext = group.label;
+                        const icon = group.icon || '';
 
-                            const bgClassMap = {
-                                floating: 'label-primary',
-                                group: 'label-warning',
-                                interface: 'label-info',
-                                any: 'label-primary',
-                            };
-                            const badgeClass = bgClassMap[item.type] || 'label-info';
+                        group.items = group.items.map(item => {
+                            const label = item.label || '';
 
                             return {
                                 value: item.value,
                                 label: label,
                                 'data-content': `
                                     <span>
-                                        ${count > 0 ? `<span class="label label-sm ${badgeClass}">${count}</span>` : ''}
+                                        ${icon ? `<i class="${icon}"></i>` : ''}
                                         ${label}
                                     </span>
                                 `.trim()
                             };
                         });
                     }
+
                     return data;
                 },
-                false,
+                true,
                 function (data) {  // post_callback, apply the URL hash logic
                     const $select = $('#interface_select');
                     const interfaceCandidate = (!interfaceInitialized && pendingUrlInterface)
@@ -801,7 +977,7 @@
                     interfaceInitialized = true;
                     pendingUrlInterface = null; // consume the hash so it is not used again
                 },
-                true  // render_html to show counts as badges
+                true  // render_html to show icons
             );
         }
 
@@ -840,13 +1016,12 @@
             localStorage.setItem("firewall_rule_tree", treeViewEnabled ? "1" : "0");
             $(this).toggleClass('active btn-primary', treeViewEnabled);
             $("#{{formGridFilterRule['table_id']}}").toggleClass("tree-enabled", treeViewEnabled);
-            $("#tree_expand_container").toggle(treeViewEnabled);
             grid.bootgrid("reload");
         });
 
-        // Visible only when tree view is enabled
         $("#tree_expand_container").detach().insertAfter("#tree_toggle_container");
-        $("#tree_expand_container").toggle(treeViewEnabled);
+        $("#tree_expand_container").show();
+
         $('#expand_tree_button').on('click', function () {
             const $table = $('#{{ formGridFilterRule["table_id"] }}');
 
@@ -1027,12 +1202,6 @@
         pointer-events: none;
     }
 
-    /* hide rowselect checkbox if tree is enabled, it does not work properly */
-    .tree-enabled .tabulator-col.tabulator-row-header input[type="checkbox"] {
-        visibility: hidden;
-        pointer-events: none;
-    }
-
     /* Do not allow Source/Destination selectpickers to grow infinitely */
     #row_rule\.source_net .bootstrap-select > .dropdown-toggle,
     #row_rule\.destination_net .bootstrap-select > .dropdown-toggle {
@@ -1116,10 +1285,8 @@
                     class="btn btn-default"
                     data-toggle="tooltip"
                     data-placement="bottom"
-                    data-delay='{"show": 1000}'
-                    title="{{ lang._('Show all rules and statistics') }}">
+                    title="{{ lang._('Show rule statistics') }}">
                 <i class="fa fa-fw fa-eye" aria-hidden="true"></i>
-                {{ lang._('Inspect') }}
             </button>
             <input id="all_rules_checkbox" type="checkbox" style="display: none;">
         </div>
@@ -1129,10 +1296,8 @@
                     class="btn btn-default"
                     data-toggle="tooltip"
                     data-placement="bottom"
-                    data-delay='{"show": 1000}'
-                    title="{{ lang._('Show all categories in a tree') }}">
-                <i class="fa fa-fw fa-sitemap" aria-hidden="true"></i>
-                {{ lang._('Tree') }}
+                    title="{{ lang._('Show categories as folders') }}">
+                <i class="fa fa-fw fa-tag" aria-hidden="true"></i>
             </button>
         </div>
         <div id="tree_expand_container" class="btn-group">
@@ -1141,7 +1306,6 @@
                     class="btn btn-default"
                     data-toggle="tooltip"
                     data-placement="bottom"
-                    data-delay='{"show": 1000}'
                     title="{{ lang._('Expand/Collapse all') }}">
                 <i class="fa fa-fw fa-angle-double-down" aria-hidden="true"></i>
             </button>

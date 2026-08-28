@@ -31,7 +31,6 @@ namespace OPNsense\Wireguard\Api;
 
 use OPNsense\Base\ApiMutableServiceControllerBase;
 use OPNsense\Core\Backend;
-use OPNsense\Wireguard\General;
 use OPNsense\Wireguard\Client;
 use OPNsense\Wireguard\Server;
 
@@ -56,7 +55,7 @@ class ServiceController extends ApiMutableServiceControllerBase
         }
 
         $backend = new Backend();
-        $backend->configdRun('interface invoke registration');
+        $this->runInterfaceRegistration();
         $backend->configdRun('template reload ' . escapeshellarg(static::$internalServiceTemplate));
         $backend->configdpRun('wireguard configure');
 

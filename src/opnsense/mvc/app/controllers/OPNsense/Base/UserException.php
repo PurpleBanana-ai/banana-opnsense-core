@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (C) 2018 Deciso B.V.
+ * Copyright (C) 2018-2026 Deciso B.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,21 +28,6 @@
 
 namespace OPNsense\Base;
 
-class UserException extends \Exception
+class UserException extends UserBaseException
 {
-    private $title = null;
-
-    public function __construct($message = '', $title = '', $code = 0, ?Exception $previous = null)
-    {
-        $this->title = $title;
-        parent::__construct($message, $code, $previous);
-    }
-
-    /**
-     * @return null|string caption
-     */
-    public function getTitle()
-    {
-        return $this->title;
-    }
 }

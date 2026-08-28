@@ -28,9 +28,6 @@
 
 namespace OPNsense\Firewall\Api;
 
-use OPNsense\Base\UserException;
-use OPNsense\Core\Config;
-
 class NptController extends FilterBaseController
 {
     protected static $categorysource = "npt.rule";
@@ -70,7 +67,10 @@ class NptController extends FilterBaseController
 
     public function getRuleAction($uuid = null)
     {
-        return $this->getBase("rule", "npt.rule", $uuid);
+        return $this->setCopySequence(
+            $this->getBase('rule', 'npt.rule', $uuid),
+            $this->getModel()->npt->rule
+        );
     }
 
     public function delRuleAction($uuid)
@@ -91,5 +91,15 @@ class NptController extends FilterBaseController
     public function toggleRuleLogAction($uuid, $log)
     {
         return $this->toggleRuleLogBase($uuid, $log, 'npt.rule');
+    }
+
+    public function downloadRulesAction()
+    {
+        return $this->downloadRulesBase('npt.rule');
+    }
+
+    public function uploadRulesAction()
+    {
+        return $this->uploadRulesBase('npt.rule');
     }
 }

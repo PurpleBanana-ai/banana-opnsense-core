@@ -38,17 +38,17 @@
                 <Default>transparent</Default>
                 <Required>Y</Required>
                 <OptionValues>
-                    <opt1 value="transparent">transparent</opt1>
-                    <opt2 value="always_nxdomain">always_nxdomain</opt2>
-                    <opt3 value="always_refuse">always_refuse</opt3>
-                    <opt4 value="always_transparent">always_transparent</opt4>
-                    <opt5 value="deny">deny</opt5>
-                    <opt6 value="inform">inform</opt6>
-                    <opt7 value="inform_deny">inform_deny</opt7>
-                    <opt8 value="nodefault">nodefault</opt8>
-                    <opt9 value="refuse">refuse</opt9>
-                    <opt10 value="static">static</opt10>
-                    <opt11 value="typetransparent">typetransparent</opt11>
+                    <transparent/>
+                    <always_nxdomain/>
+                    <always_refuse/>
+                    <always_transparent/>
+                    <deny/>
+                    <inform/>
+                    <inform_deny/>
+                    <nodefault/>
+                    <refuse/>
+                    <static/>
+                    <typetransparent/>
                 </OptionValues>
             </local_zone_type>
             <outgoing_interface type=".\UnboundInterfaceField">
@@ -103,19 +103,25 @@
                     <opt3 value="2">Level 2</opt3>
                 </OptionValues>
             </valloglevel>
-            <privatedomain type="CSVListField"/>
+            <privatedomain type="CSVListField">
+                <Mask>/\A[^\r\n]*\z/</Mask>
+                <MaskPerItem>Y</MaskPerItem>
+            </privatedomain>
             <privateaddress type="NetworkField">
                 <Required>Y</Required>
                 <WildcardEnabled>N</WildcardEnabled>
                 <Default>0.0.0.0/8,10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.0.2.0/24,192.168.0.0/16,198.18.0.0/15,198.51.100.0/24,203.0.113.0/24,233.252.0.0/24,::1/128,2001:db8::/32,fc00::/8,fd00::/8,fe80::/10</Default>
                 <AsList>Y</AsList>
             </privateaddress>
-            <insecuredomain type="CSVListField"/>
-            <msgcachesize type="TextField">
+            <insecuredomain type="CSVListField">
+                <Mask>/\A[^\r\n]*\z/</Mask>
+                <MaskPerItem>Y</MaskPerItem>
+            </insecuredomain>
+            <msgcachesize type="StrictTextField">
                 <Mask>/[0-9]+[kmg]?/i</Mask>
                 <ValidationMessage>The cache size should be numeric, optionally appended with 'k', 'm', or 'g'.</ValidationMessage>
             </msgcachesize>
-            <rrsetcachesize type="TextField">
+            <rrsetcachesize type="StrictTextField">
                 <Mask>/[0-9]+[kmg]?/i</Mask>
                 <ValidationMessage>The cache size should be numeric, optionally appended with 'k', 'm', or 'g'.</ValidationMessage>
             </rrsetcachesize>
@@ -148,7 +154,7 @@
                     <Default>1</Default>
                     <Required>Y</Required>
                 </enabled>
-                <name type="TextField">
+                <name type="StrictTextField">
                     <Required>Y</Required>
                     <ValidationMessage>An Access list name is required.</ValidationMessage>
                 </name>
@@ -184,43 +190,63 @@
                 <type type="OptionField">
                     <Multiple>Y</Multiple>
                     <OptionValues>
-                        <atf>Abuse.ch - ThreatFox IOC database</atf>
-                        <ag>AdGuard List</ag>
-                        <el>EasyList</el>
-                        <ep>EasyPrivacy</ep>
-                        <hgz001>[hagezi] Multi LIGHT - Basic protection</hgz001>
-                        <hgz002>[hagezi] Multi NORMAL - All-round protection</hgz002>
-                        <hgz003>[hagezi] Multi PRO - Extended protection</hgz003>
-                        <hgz004>[hagezi] Multi PRO mini </hgz004>
-                        <hgz005>[hagezi] Multi PRO++ - Maximum protection</hgz005>
-                        <hgz006>[hagezi] Multi PRO++ mini</hgz006>
-                        <hgz007>[hagezi] Multi ULTIMATE - Aggressive protection</hgz007>
-                        <hgz008>[hagezi] Multi ULTIMATE mini</hgz008>
-                        <hgz009>[hagezi] Fake - scams / fakes</hgz009>
-                        <hgz010>[hagezi] Pop-Up Ads</hgz010>
-                        <hgz011>[hagezi] Threat Intelligence Feeds</hgz011>
-                        <hgz012>[hagezi] Threat Intelligence Feeds - Medium</hgz012>
-                        <hgz013>[hagezi] Threat Intelligence Feeds - Mini</hgz013>
-                        <hgz014>[hagezi] DoH/VPN/TOR/Proxy Bypass</hgz014>
-                        <hgz015>[hagezi] Safesearch not supported</hgz015>
-                        <hgz016>[hagezi] Dynamic DNS blocking</hgz016>
-                        <hgz017>[hagezi] Badware Hoster blocking</hgz017>
-                        <hgz018>[hagezi] Anti Piracy</hgz018>
-                        <hgz019>[hagezi] Gambling</hgz019>
-                        <hgz020>[hagezi] Gambling - Medium</hgz020>
-                        <hgz021>[hagezi] Gambling - Mini</hgz021>
-                        <oisd0>OISD - Domain Blocklist Ads</oisd0>
-                        <oisd1>OISD - Domain Blocklist Big</oisd1>
-                        <oisd2>OISD - Domain Blocklist NSFW</oisd2>
-                        <sb>Steven Black List</sb>
-                        <yy>YoYo List</yy>
+                        <opt1 value="General Blocklists">
+                            <atf>Abuse.ch - ThreatFox IOC</atf>
+                            <ag>AdGuard List</ag>
+                            <el>EasyList</el>
+                            <ep>EasyPrivacy</ep>
+                            <sb>Steven Black List</sb>
+                            <yy>YoYo List</yy>
+                        </opt1>
+                        <opt2 value="Hagezi Multi - Clean the Internet">
+                            <hgz001>LIGHT - Relaxed Blocking</hgz001>
+                            <hgz002>NORMAL - Relaxed/Balanced Blocking</hgz002>
+                            <hgz003>PRO - Balanced Blocking</hgz003>
+                            <hgz005>PRO++ - Balanced/Aggressive Blocking</hgz005>
+                            <hgz007>ULTIMATE - Aggressive Blocking</hgz007>
+                        </opt2>
+                        <opt3 value="OISD Blocklists">
+                            <oisd0>Ads Blocklist</oisd0>
+                            <oisd1>Big Blocklist (incl. Ads)</oisd1>
+                            <oisd2>NSFW Blocklist</oisd2>
+                        </opt3>
+                        <opt4 value="Hagezi Targeted Lists">
+                            <hgz011>Threat Intelligence Feeds</hgz011>
+                            <hgz009>Fake - scams / fakes</hgz009>
+                            <hgz010>Pop-Up Ads</hgz010>
+                            <hgz014>DoH/VPN/TOR/Proxy Bypass</hgz014>
+                            <hgz015>Safesearch not supported</hgz015>
+                            <hgz016>Dynamic DNS blocking</hgz016>
+                            <hgz017>Badware Hoster blocking</hgz017>
+                            <hgz018>Anti Piracy</hgz018>
+                            <hgz019>Gambling</hgz019>
+                            <hgz022>Social Networks</hgz022>
+                        </opt4>
+                        <opt5 value="Minimal Hardware Requirements">
+                            <hgz004>Multi PRO - Mini </hgz004>
+                            <hgz006>Multi PRO++ - Mini</hgz006>
+                            <hgz008>Multi ULTIMATE - Mini</hgz008>
+                            <hgz012>Threat Intelligence Feeds - Medium</hgz012>
+                            <hgz013>Threat Intelligence Feeds - Mini</hgz013>
+                            <hgz020>Gambling - Medium</hgz020>
+                            <hgz021>Gambling - Mini</hgz021>
+                        </opt5>
                     </OptionValues>
                 </type>
-                <lists type="CSVListField"/>
-                <allowlists type="CSVListField"/>
-                <blocklists type="CSVListField"/>
+                <lists type="CSVListField">
+                    <Mask>/\A[^\r\n]*\z/</Mask>
+                    <MaskPerItem>Y</MaskPerItem>
+                </lists>
+                <allowlists type="CSVListField">
+                    <Mask>/\A[^\r\n]*\z/</Mask>
+                    <MaskPerItem>Y</MaskPerItem>
+                </allowlists>
+                <blocklists type="CSVListField">
+                    <Mask>/\A[^\r\n]*\z/</Mask>
+                    <MaskPerItem>Y</MaskPerItem>
+                </blocklists>
                 <wildcards type="CSVListField">
-                    <Mask>/^((?:(?:[a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.){1,})(?:[a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])$/i</Mask>
+                    <Mask>/\A((?:(?:[a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\.){1,})(?:[a-z0-9]|[a-z0-9][a-z0-9\-]*[a-z0-9])\z/i</Mask>
                     <ValidationMessage>A valid domain must be specified.</ValidationMessage>
                     <MaskPerItem>Y</MaskPerItem>
                 </wildcards>
@@ -369,6 +395,7 @@
                             <check>AAAA</check>
                         </check002>
                     </Constraints>
+                    <NetMaskAllowed>N</NetMaskAllowed>
                 </server>
                 <txtdata type="DescriptionField">
                     <!-- Use DescriptionField to cap to 255 characters -->

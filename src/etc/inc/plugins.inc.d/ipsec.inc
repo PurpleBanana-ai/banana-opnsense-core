@@ -186,7 +186,7 @@ function ipsec_interfaces()
     if ($is_enabled) {
         $oic = ['enable' => true];
         $oic['if'] = 'enc0';
-        $oic['descr'] = 'IPsec';
+        $oic['descr'] = 'IPsec encapsulation';
         $oic['type'] = 'none';
         $oic['virtual'] = true;
         $interfaces['enc0'] = $oic;
@@ -944,22 +944,23 @@ function ipsec_write_strongswan_conf()
  */
 function ipsec_write_cas()
 {
-    global $config;
-    $capath = "/usr/local/etc/swanctl/x509ca";
+    $capath = '/usr/local/etc/swanctl/x509ca';
     $cafiles = [];
-    foreach (isset($config['ca']) ? $config['ca'] : [] as $ca) {
+
+    foreach (config_read_array('ca', false) as $ca) {
         $cert = base64_decode($ca['crt']);
         $x509cert = openssl_x509_parse(openssl_x509_read($cert));
-        if (is_array($x509cert) && isset($x509cert['hash'])) {
+        if (is_array($x509cert) && isset($x509cert['hash']) && preg_match('/^[0-9a-f]{13}$/', $ca['refid'])) {
             $fname = "{$capath}/{$x509cert['hash']}.0.crt";
             $linkname = "{$capath}/{$ca['refid']}.crt";
             array_push($cafiles, $fname, $linkname);
             file_put_contents($fname, $cert);
             @symlink(basename($fname), $linkname); /* add link with our internal reference */
         } else {
-            log_msg(sprintf('Error: Invalid certificate hash info for %s', $ca['descr']), LOG_ERR);
+            log_msg(sprintf('Error: invalid certificate info for %s', $ca['descr']), LOG_ERR);
         }
     }
+
     foreach (glob("{$capath}/*.0.crt") as $fname) {
         if (!in_array($fname, $cafiles)) {
             unlink($fname);
@@ -1673,4 +1674,25 @@ function ipsec_configure_vti($verbose = false, $device = null)
 function ipsec_configure_device($device)
 {
     ipsec_configure_vti(false, $device);
+}
+
+function ipsec_get_default_nat_outbound_networks($unused_fw = null)
+{
+    global $config;
+
+    $result = [];
+
+    if (!empty($config['ipsec']['client']['pool_address']) && !empty($config['ipsec']['client']['pool_netbits'])) {
+        $network = "{$config['ipsec']['client']['pool_address']}/{$config['ipsec']['client']['pool_netbits']}";
+        $result[$network] = $network;
+    }
+
+    return $result;
+}
+
+function ipsec_run()
+{
+    return [
+        'networks_source_nat' => 'ipsec_get_default_nat_outbound_networks',
+    ];
 }

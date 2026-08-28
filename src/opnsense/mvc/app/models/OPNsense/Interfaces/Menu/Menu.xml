@@ -1,6 +1,6 @@
 <menu>
     <Interfaces>
-        <Assignments order="200" url="/interfaces_assign.php" cssClass="fa fa-pencil fa-fw"/>
+        <Assignments order="200" url="/ui/interfaces/assignment" cssClass="fa fa-pencil fa-fw"/>
         <Devices order="210" cssClass="fa fa-archive fa-fw">
             <Bridge url="/ui/interfaces/bridge"/>
             <GIF url="/ui/interfaces/gif"/>
@@ -23,9 +23,7 @@
             <Status url="/ui/diagnostics/interface/vip"/>
         </VIP>
         <Wireless order="260" cssClass="fa fa-wifi fa-fw">
-            <Devices url="/interfaces_wireless.php">
-                <Edit url="/interfaces_wireless_edit.php*" visibility="hidden"/>
-            </Devices>
+            <Devices url="/ui/interfaces/wireless"/>
         </Wireless>
         <Diagnostics order="270" cssClass="fa fa-medkit fa-fw"/>
     </Interfaces>

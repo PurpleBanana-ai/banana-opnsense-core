@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $pconfig['httpaccesslog'] = isset($config['system']['webgui']['httpaccesslog']);
     $pconfig['disableconsolemenu'] = isset($config['system']['disableconsolemenu']);
     $pconfig['usevirtualterminal'] = isset($config['system']['usevirtualterminal']);
-    $pconfig['sudo_allow_wheel'] = $config['system']['sudo_allow_wheel'];
+    $pconfig['sudo_allow_wheel'] = $config['system']['sudo_allow_wheel'] ?? null;
     $pconfig['sudo_allow_group'] = isset($config['system']['sudo_allow_group']) ? $config['system']['sudo_allow_group'] : null;
     $pconfig['user_allow_gen_token'] = isset($config['system']['user_allow_gen_token']) ? explode(",", $config['system']['user_allow_gen_token']) : [];
     $pconfig['nodnsrebindcheck'] = isset($config['system']['webgui']['nodnsrebindcheck']);
@@ -124,6 +124,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     if (!empty($pconfig['autologout']) && (!is_numeric($pconfig['autologout']) || $pconfig['autologout'] <= 0)) {
         $input_errors[] = gettext('Inactivity timeout must be an integer value.');
+    }
+
+    if (!empty($pconfig['compression']) && !in_array($pconfig['compression'], ['1', '5', '9'])) {
+        $input_errors[] = gettext('Invalid compression value.');
     }
 
     if (!empty($pconfig['authmode'])) {
@@ -382,20 +386,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
         }
 
-        write_config();
+        if (write_config()) {
+            configd_run('filter reload');
+            configd_run('service restart login');
+            configd_run('dns reload');
+            configd_run('plugins configure dns');
+            configd_run('plugins configure dhcp');
+            configd_run('openssh restart', true);
+
+            if ($restart_webgui) {
+                configd_run('webgui restart 3', true);
+            }
+        }
 
         $savemsg = get_std_save_message();
 
-        filter_configure();
-        system_login_configure();
-        system_resolver_configure();
-        plugins_configure('dns');
-        plugins_configure('dhcp');
-        configd_run('openssh restart', true);
-
-        if ($restart_webgui) {
-            configd_run('webgui restart 3', true);
-        }
     }
 }
 
@@ -415,6 +420,7 @@ $sshoptions = json_decode(configd_run('openssh query'), true);
 
 legacy_html_escape_form_data($pconfig);
 legacy_html_escape_form_data($a_group);
+legacy_html_escape_form_data($a_cert);
 
 include("head.inc");
 

@@ -32,6 +32,36 @@
         // XXX: Category keys differ in the individual models
         const category_key = '{{ categoryKey }}';
 
+        function setupSnatModeForm() {
+            if (entrypoint !== 'source_nat') {
+                updateSnatModeUI();
+                return;
+            }
+            mapDataToFormUI({
+                'frm_dialogSNatMode': "/api/firewall/source_nat/get"
+            }).done(function() {
+                $('.selectpicker').selectpicker('refresh');
+                updateSnatModeUI();
+                $('#filter\\.general\\.snat_mode').change(function () {
+                    $(document).trigger("settings-changed");
+                });
+            });
+        }
+
+        function updateSnatModeUI() {
+            if (entrypoint !== 'source_nat') {
+                $('#rule_grid_container').removeClass('snat-mode-hidden snat-mode-readonly');
+                return;
+            }
+
+            const snatMode = $('#filter\\.general\\.snat_mode').val();
+            const isDisabled = snatMode === 'disabled';
+            const isReadonly = snatMode === 'automatic';
+
+            $('#rule_grid_container').toggleClass('snat-mode-hidden', isDisabled);
+            $('#rule_grid_container').toggleClass('snat-mode-readonly', isReadonly);
+        }
+
         function showDialogAlert(type, title, message) {
             BootstrapDialog.show({
                 type: type,
@@ -50,35 +80,123 @@
         let treeViewEnabled = localStorage.getItem(storageKey) === "1";
         $('#toggle_tree_button').toggleClass('active btn-primary', treeViewEnabled);
 
-        function dynamicResponseHandler(resp) {
-            if (!treeViewEnabled) {
-                return resp;
+        const ruleTypeMap = [
+            { idx: 100000, uuid: "auto0", label: "{{ lang._('Automatically generated rules') }}", icon: "fa-magic", tooltip: "{{ lang._('Automatically generated rules') }}", color: "text-secondary" },
+            { idx: 400000, uuid: "interface", label: "{{ lang._('Interface rules') }}", icon: "fa-ethernet", tooltip: "{{ lang._('Interface rule') }}", color: "text-info" },
+            { idx: 500000, uuid: "auto1", label: "{{ lang._('Automatically generated rules') }}", icon: "fa-magic", tooltip: "{{ lang._('Automatically generated rules') }}", color: "text-secondary" },
+            { idx: 600000, uuid: "defunct", label: "{{ lang._('Defunct rules') }}", icon: "fa-exclamation-triangle", tooltip: "{{ lang._('Defunct rules that are not processed') }}", color: "text-secondary" },
+        ];
+
+        const getRuleType = function(row) {
+            return buckets.find(r => r.idx === Number(row.prio_group)) || null;
+        };
+
+        let buckets = [];
+        function createBucket(props) {
+            return {
+                isGroup: true,
+                children: [],
+                ...props
+            };
+        }
+
+        function responseHandler(response) {
+            // recursively clear children but keep buckets intact
+            const clear = (buckets) => {
+                for (const bucket of buckets) {
+                    if (Array.isArray(bucket.children)) {
+                        clear(bucket.children);
+                        bucket.children = [];
+                    }
+                }
             }
 
-            const buckets = [];
-            let current = null;
+            clear(buckets);
 
-            resp.rows.forEach(r => {
-                const label = r[`%${category_key}`] || r[category_key] || "";
+            // (re)initialize missing buckets
+            for (const type of ruleTypeMap) {
+                let bucket = buckets.some(bucket => bucket.idx === type.idx);
 
-                if (!current || current._label !== label) {
-                    current = {
-                        uuid           : `${String(r.uuid).replace(/-/g, '')}`,
-                        isGroup        : true,
-                        _label         : label,
-                        children       : []
-                    };
+                if (!bucket) {
+                    buckets.push(createBucket({
+                        ...type,
+                        _persistence: false,
+                        _expanded: false,
+                        categories: type.label,
+                        category_colors: [{ name: type.label }],
+                    }));
+                    buckets = buckets.sort((a, b) => a.idx - b.idx);
+                }
+            }
 
-                    current[category_key] = label;
-                    current.category_colors = r.category_colors || [];
+            // determine tree expansion state of top-level buckets
+            for (const bucket of buckets) {
+                if (["auto0", "auto1"].includes(bucket.uuid)) {
+                    bucket._expanded = false;
+                } else if (bucket.uuid === "interface") {
+                    bucket._expanded = true;
+                }
+            }
 
-                    buckets.push(current);
+            const indexMap = {};
+            let lastBucketId = null;
+            response.rows.forEach(row => {
+                // Find bucket this row belongs to. If it doesn't exist, create it.
+                let bucket = getRuleType(row);
+
+                const categoryLabel = row["%categories"] || row.categories || "";
+                if (treeViewEnabled && row.is_automatic !== true && categoryLabel !== "") {
+                    // We're dealing with a category, create bucket id based on this row
+                    const bucketId = `${bucket.uuid}category${String(categoryLabel).replace(/[^a-z0-9]/gi, '')}`;
+
+                    // categories with the same name may appear multiple times due to ordering,
+                    // indexMap tracks these to uniquely identify them.
+                    if (!(bucketId in indexMap)) {
+                        indexMap[bucketId] = 0;
+                    }
+
+                    if (bucketId !== lastBucketId && lastBucketId !== null) {
+                        // moved to next category
+                        indexMap[lastBucketId]++;
+                    }
+
+                    const id = `${bucketId}${indexMap[bucketId]}`;
+                    let newBucket = bucket.children.find(child => child.uuid === id);
+
+                    if (!newBucket) {
+                        newBucket = createBucket({
+                            uuid: id,
+                            _persistence: true,
+                            categories: categoryLabel,
+                            category_colors: row.category_colors,
+                        });
+                        bucket.children.push(newBucket);
+                    }
+
+                    bucket = newBucket;
+                    lastBucketId = bucketId;
                 }
 
-                current.children.push(r);
+                bucket.children.push(row);
             });
 
-            return Object.assign({}, resp, { rows: buckets });
+            const removeEmptyGroups = (items) => {
+                for (let i = items.length - 1; i >= 0; i--) {
+                    const item = items[i];
+
+                    if (Array.isArray(item.children)) {
+                        if (item.children.length === 0) {
+                            items.splice(i, 1);
+                        } else {
+                            removeEmptyGroups(item.children);
+                        }
+                    }
+                }
+            };
+
+            removeEmptyGroups(buckets);
+
+            return Object.assign({}, response, { rows: buckets });
         }
 
         const grid = $("#{{ formGridRule['table_id'] }}").UIBootgrid({
@@ -92,6 +210,7 @@
                 dataTree              : true,
                 dataTreeChildField    : "children",
                 dataTreeElementColumn : category_key,
+                dataTreeStartExpanded : (row, level) => row.getData()._expanded,
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const $element = $(row.getElement());
@@ -119,8 +238,10 @@
                 }
             },
             options: {
+                virtualDOM: true,
                 responsive: true,
                 sorting: false,
+                rowCount: [500,20,50,100,200,1000,2000,-1],
                 initialSearchPhrase: getUrlHash('search'),
                 requestHandler: function(request){
                     if ( $('#category_filter').val().length > 0) {
@@ -128,7 +249,7 @@
                     }
                     return request;
                 },
-                responseHandler: dynamicResponseHandler,
+                responseHandler: responseHandler,
                 headerFormatters: {
                     // XXX: This cannot be (easily) dynamically decided, so some keys are duplicate for simplicity
                     enabled: function (column) {
@@ -148,59 +269,9 @@
                     },
                 },
                 formatters:{
-                    commands: function (column, row) {
-                        if (row.isGroup) {
-                            return "";
-                        }
-                        let rowId = row.uuid;
-
-                        if (!rowId.includes('-')) {
-                            return `
-                                <a href="/system_advanced_firewall.php" target="_blank" rel="noopener noreferrer"
-                                class="btn btn-xs btn-default bootgrid-tooltip"
-                                title="{{ lang._('Lookup rule reference') }}">
-                                    <span class="fa fa-fw fa-link"></span>
-                                </a>
-                            `;
-                        }
-
-                        return `
-                            <button type="button" class="btn btn-xs btn-default command-move_before
-                                bootgrid-tooltip" data-row-id="${rowId}"
-                                title="{{ lang._('Move selected rule before this rule') }}">
-                                <span class="fa fa-fw fa-arrow-left"></span>
-                            </button>
-
-                            <button type="button" class="btn btn-xs btn-default command-toggle_log bootgrid-tooltip"
-                                data-row-id="${row.uuid}" data-value="${row.log}"
-                                title="${row.log == '1'
-                                    ? '{{ lang._("Disable Logging") }}'
-                                    : '{{ lang._("Enable Logging") }}'}">
-                                <i class="fa fa-fw ${row.log == '1' ? 'fa-bell' : 'fa-bell-slash'}"></i>
-                            </button>
-
-                            <button type="button" class="btn btn-xs btn-default command-edit
-                                bootgrid-tooltip" data-row-id="${rowId}"
-                                title="{{ lang._('Edit') }}">
-                                <span class="fa fa-fw fa-pencil"></span>
-                            </button>
-
-                            <button type="button" class="btn btn-xs btn-default command-copy
-                                bootgrid-tooltip" data-row-id="${rowId}"
-                                title="{{ lang._('Clone') }}">
-                                <span class="fa fa-fw fa-clone"></span>
-                            </button>
-
-                            <button type="button" class="btn btn-xs btn-default command-delete
-                                bootgrid-tooltip" data-row-id="${rowId}"
-                                title="{{ lang._('Delete') }}">
-                                <span class="fa fa-fw fa-trash-o"></span>
-                            </button>
-                        `;
-                    },
                     rowtoggle: function (column, row) {
                         const rowId = row.uuid || '';
-                        if (row.isGroup || !rowId.includes('-')) {
+                        if (row.isGroup || !rowId.includes('-') || row.prio_group == 600000) {
                             return '';
                         }
                         const isEnabled =
@@ -233,27 +304,38 @@
                     },
                     category: function (column, row) {
                         const isGroup = row.isGroup;
-                        const hasCategories = row[category_key] && Array.isArray(row.category_colors);
+                        const hasCategories = row.categories && Array.isArray(row.category_colors);
 
+                        // Rows without category metadata render nothing in this column.
+                        // This also avoids creating a fake label for rules that
+                        // are intentionally kept directly below their rule type bucket.
                         if (!hasCategories) {
-
-                            return isGroup
-                                ? `<span class="category-icon category-cell">
-                                    <i class="fa fa-fw fa-tag"></i>
-                                    <strong>{{ lang._('Uncategorized') }}</strong>
-                                    <span class="badge chip"
-                                            style="margin-left:6px;">${(row.children && row.children.length) || 0}</span>
-                                </span>`
-                                : '';
+                            return '';
                         }
 
-                        const category = row.category_colors || [];
+                        const categories = row.category_colors || [];
 
-                        const icons = category.map(cat => {
+                        const icons = categories.map(cat => {
+                            /*
+                            * Top-level tree icons, e.g. automatic/floating/interface rules, are
+                            * resolved here as well because each row can only use one formatter for
+                            * this column. Rule type buckets provide a synthetic category entry
+                            * whose name matches ruleTypeMap, while real category buckets continue
+                            * to render normal category tag icons.
+                            */
+                            const ruleType = ruleTypeMap.find(type => type.label === cat.name);
+
+                            if (isGroup && ruleType) {
+                                return `
+                                    <span class="category-icon" data-toggle="tooltip" title="${ruleType.tooltip}">
+                                        <i class="fa ${ruleType.icon} fa-fw ${ruleType.color}"></i>
+                                    </span>`;
+                            }
+
                             const bgColor = cat.color ? ` style="color:${cat.color};"` : '';
 
                             return `
-                                <span class="category-icon" data-toggle="tooltip" title="${cat.name}">
+                                <span class="category-icon" data-toggle="tooltip" title="${htmlSafe(cat.name)}">
                                     <i class="fa fa-fw fa-tag"${bgColor}></i>
                                 </span>`;
                         }).join(' ');
@@ -261,9 +343,7 @@
                         return isGroup
                             ? `<span class="category-cell">
                                     <span class="category-cell-content">
-                                        <strong>${icons} ${category.map(cat => cat.name).join(', ')}</strong>
-                                        <span class="badge chip"
-                                                style="margin-left:6px;">${(row.children && row.children.length) || 0}</span>
+                                        <strong>${icons} ${categories.map(cat => cat.name).join(', ')}</strong>
                                     </span>
                             </span>`
                             : icons;
@@ -297,15 +377,19 @@
                         if (row.isGroup) {
                             return "";
                         }
+
                         const value = row[column.id] || "";
                         // DNAT uses network, SNAT and ONAT uses net
                         const isNegated = (row[column.id.replace(/network|net/, 'not')] == 1) ? "! " : "";
 
                         if (typeof value !== 'string') {
                             return '';
-                        }
-
-                        if (!value || value === "any") {
+                        } else if (column.id === "local-port") {
+                            // DNAT: mirror destination port into local-port for better visibility
+                            return (!row["local-port"] ? row["destination.port"] : row["local-port"]) || "*";
+                        } else if (entrypoint === 'source_nat' && column.id === "target" && value === "") {
+                            return "{{ lang._('Interface address') }}";
+                        } else if (!value || value === "any") {
                             return isNegated + '*';
                         }
 
@@ -315,7 +399,7 @@
                             if (aliasInfo.isAlias) {
                                 const tooltipHtml = aliasInfo.summary || aliasInfo.description || aliasInfo.value || "";
                                 return `
-                                    <span data-toggle="tooltip" data-html="true" title="${tooltipHtml}">${aliasInfo.value}&nbsp;</span>
+                                    <span data-toggle="tooltip" data-html="true" title="${htmlSafe(tooltipHtml)}">${aliasInfo.value}&nbsp;</span>
                                     <a href="/ui/firewall/alias/index/${encodeURIComponent(aliasInfo.value)}"
                                     data-toggle="tooltip" title="{{ lang._('Edit alias') }}">
                                     <i class="fa fa-fw fa-list"></i>
@@ -330,7 +414,47 @@
                 },
             },
             commands: {
+                upload_rules: {
+                    onRendered: function () {
+                        const $el = $(this);
+                        $el.data('title', "{{ lang._('Import rules') }}");
+                        $el.data('endpoint', `/api/firewall/${entrypoint}/upload_rules`);
+                        $el.SimpleFileUploadDlg({
+                            onAction: function () {
+                                $("#{{formGridRule['table_id']}}").bootgrid('reload');
+                                $(document).trigger("settings-changed");
+                            }
+                        });
+                    },
+                    footer: true,
+                    classname: 'fa fa-fw fa-upload',
+                    title: "{{ lang._('Import csv') }}",
+                    sequence: 400
+                },
+                download_rules: {
+                    footer: true,
+                    classname: 'fa fa-fw fa-table',
+                    title: "{{ lang._('Export as csv') }}",
+                    method: function (e) {
+                        e.preventDefault();
+                        window.open(`/api/firewall/${entrypoint}/download_rules`);
+                    },
+                    sequence: 500
+                },
+                lookup_ref: {
+                    filter: (cell) => commandFilter(cell, "lookup_ref"),
+                    classname: "fa fa-fw fa-link",
+                    title: "{{ lang._('Lookup rule reference') }}",
+                    sequence: 10,
+                    method: function(event, cell) {
+                        const row = cell.getData();
+                        if (row?.ref) {
+                            window.open(`/${row.ref}`, "_blank", "noopener,noreferrer");
+                        }
+                    },
+                },
                 move_before: {
+                    filter: (cell) => commandFilter(cell),
                     method: function(event) {
                         const selected = $("#{{ formGridRule['table_id'] }}").bootgrid("getSelectedRows");
                         if (selected.length !== 1) {
@@ -378,9 +502,11 @@
                     sequence: 10
                 },
                 toggle_log: {
-                    method: function(event) {
+                    filter: (cell) => commandFilter(cell),
+                    method: function(event, cell) {
                         const uuid = $(this).data("row-id");
-                        const log = String(+$(this).data("value") ^ 1);
+                        const row = cell.getData();
+                        const log = String(+row.log ^ 1);
                         ajaxCall(
                             `/api/firewall/${entrypoint}/toggle_rule_log/${uuid}/${log}`,
                             {},
@@ -400,11 +526,107 @@
                             'POST'
                         );
                     },
-                    classname: 'fa fa-fw fa-exclamation-circle',
-                    title: "{{ lang._('Toggle Logging') }}",
+                    classname: (cell) => {
+                        const row = cell.getData();
+                        return row.log === "1" ? "fa fa-fw fa-bell" : "fa fa-fw fa-bell-slash";
+                    },
+                    title: (cell) => {
+                        const row = cell.getData();
+                        return row.log === "1" ? '{{ lang._("Disable Logging") }}' : '{{ lang._("Enable Logging") }}';
+                    },
                     sequence: 20
+                },
+                delete: {
+                    filter: (cell) => commandFilter(cell, "delete"),
+                },
+                copy: {
+                    filter: (cell) => commandFilter(cell, "copy"),
+                },
+                edit: {
+                    filter: (cell) => commandFilter(cell, "edit"),
                 }
             },
+        });
+
+        function commandFilter(cell, type="") {
+            const row = cell.getData();
+            const hasUuid = row.uuid?.includes("-") ?? false;
+
+            if (row.isGroup) return false;
+
+            if (row.prio_group == 600000 && !["delete", "copy"].includes(type)) {
+                // Defunct rules can only be deleted or copied.
+                return false;
+            }
+
+            if (type === "lookup_ref") {
+                // lookup_ref only allowed without a valid UUID
+                return !hasUuid;
+            }
+
+            return hasUuid;
+        }
+
+        function onTreeEvent(row, open) {
+            const getBucketById = (buckets, uuid) => {
+                for (const bucket of buckets) {
+                    if (bucket.uuid === uuid) {
+                        return bucket;
+                    }
+
+                    if (Array.isArray(bucket.children)) {
+                        const found = getBucketById(bucket.children, uuid);
+
+                        if (found) {
+                            return found;
+                        }
+                    }
+                }
+
+                return null;
+            }
+
+            const bucket = getBucketById(buckets, row.getData().uuid);
+            if ('_expanded' in bucket) {
+                bucket._expanded = open;
+            }
+        }
+
+        // persist expansion state of rule type categories
+        // during the lifetime of the page, resets on page reload
+        const table = grid.bootgrid('getTable');
+        table.on('dataTreeRowExpanded', (row) => onTreeEvent(row, true));
+        table.on('dataTreeRowCollapsed', (row) => onTreeEvent(row, false));
+
+        // "selectableRowsCheck" doesn't execute when the header checkbox is used,
+        // work around this by checking on row selection
+        table.on('rowSelected', (row) => {
+            const data = row.getData();
+            if (data.isGroup) {
+                // "select all" triggered, deselect current row since it's a group, but select any nested row that isn't a group recursively
+                row.deselect();
+                const children = row.getTreeChildren();
+                const getAllRows = (rows) => {
+                    const result = [];
+
+                    for (const row of rows) {
+                        const rowData = row.getData();
+                        // do not select rows that aren't visible to avoid confusion (_expanded == false)
+                        if (!rowData.isGroup && rowData.uuid.includes("-") && row.getTreeParent().getData()._expanded) {
+                            result.push(row);
+                            continue;
+                        }
+
+                        result.push(...getAllRows(row.getTreeChildren() || []));
+                    }
+
+                    return result;
+                };
+
+                for (const selectableRow of getAllRows(children)) {
+                    selectableRow.select();
+                }
+            }
         });
 
         let categoryInitialized = false;
@@ -428,7 +650,7 @@
                             label: row.name,
                             id: row.used > 0 ? row.uuid : undefined,
                             'data-content': row.used > 0
-                                ? `<span><span class="label label-sm"${bgColor}>${row.used}</span> ${optVal}</span>`
+                                ? `<span>${optVal} <span class="label label-sm"${bgColor}>${row.used}</span></span>`
                                 : undefined
                         };
                     });
@@ -456,12 +678,11 @@
             localStorage.setItem(storageKey, treeViewEnabled ? "1" : "0");
             $(this).toggleClass('active btn-primary', treeViewEnabled);
             $("#{{ formGridRule['table_id'] }}").toggleClass("tree-enabled", treeViewEnabled);
-            $("#tree_expand_container").toggle(treeViewEnabled);
             grid.bootgrid("reload");
         });
 
         $("#tree_expand_container").detach().insertAfter("#tree_toggle_container");
-        $("#tree_expand_container").toggle(treeViewEnabled);
+        $("#tree_expand_container").show();
         $('#expand_tree_button').on('click', function () {
             const $table = $('#{{ formGridRule["table_id"] }}');
 
@@ -476,6 +697,9 @@
             if (!data || !data.single) return;
             $(".net_selector").each(function(){
                 $(this).replaceInputWithSelector(data, $(this).hasClass('net_selector_multi'));
+                if (entrypoint === 'source_nat') {
+                    $('#rule\\.target').attr('placeholder', "{{ lang._('Interface address') }}");
+                }
                 /* enforce single selection when "single host or network" or "any" are selected */
                 if ($(this).hasClass('net_selector_multi')) {
                     $("select[for='" + $(this).attr('id') + "']").on('shown.bs.select', function(){
@@ -526,7 +750,23 @@
         $("#reconfigureAct").SimpleActionButton({
             onPreAction() {
                 reconfigureActInProgress = true;
-                return $.Deferred().resolve();
+                if (entrypoint !== 'source_nat') {
+                    return $.Deferred().resolve();
+                }
+                const dfObj = new $.Deferred();
+                saveFormToEndpoint(
+                    "/api/firewall/source_nat/set",
+                    "frm_dialogSNatMode",
+                    function() {
+                        dfObj.resolve();
+                    },
+                    true,
+                    function() {
+                        reconfigureActInProgress = false;
+                        dfObj.reject();
+                    }
+                );
+                return dfObj.promise();
             },
             onAction(data, status) {
                 Promise.all([
@@ -534,10 +774,14 @@
                 ])
                 .finally(() => {
                     reconfigureActInProgress = false;
+                    // The search endpoint has different responses based on selected snat_mode
+                    updateSnatModeUI();
+                    $("#{{formGridRule['table_id']}}").bootgrid('reload');
                 });
             }
         });
 
+        setupSnatModeForm();  // All NAT pages have to call this to unhide the shared grid
         populateCategoriesSelectpicker();
 
     });
@@ -594,10 +838,6 @@
         visibility: hidden;
         pointer-events: none;
     }
-    .tree-enabled .tabulator-col.tabulator-row-header input[type="checkbox"] {
-        visibility: hidden;
-        pointer-events: none;
-    }
     .row-disabled {
         opacity: 0.4;
     }
@@ -627,6 +867,12 @@
             margin: 0;
         }
     }
+    .snat-mode-hidden {
+        display: none;
+    }
+    .snat-mode-readonly [class*="command-"] {
+        display: none;
+    }
 </style>
 
 <div class="tab-content content-box">
@@ -639,8 +885,8 @@
 
         <div id="tree_toggle_container" class="btn-group">
             <button id="toggle_tree_button" type="button" class="btn btn-default"
-                    data-toggle="tooltip" title="{{ lang._('Show categories in a tree') }}">
-                <i class="fa fa-fw fa-sitemap"></i> {{ lang._('Tree') }}
+                    data-toggle="tooltip" title="{{ lang._('Show categories as folders') }}">
+                <i class="fa fa-fw fa-tag" aria-hidden="true"></i>
             </button>
         </div>
 
@@ -651,8 +897,12 @@
             </button>
         </div>
     </div>
-
-    {{ partial('layout_partials/base_bootgrid_table', formGridRule + {'command_width':'150'}) }}
+    {% if entrypoint == 'source_nat' %}
+        {{ partial("layout_partials/base_form", ['fields': formSnatMode, 'id': 'frm_dialogSNatMode']) }}
+    {% endif %}
+    <div id="rule_grid_container" class="snat-mode-hidden">
+        {{ partial('layout_partials/base_bootgrid_table', formGridRule + {'command_width':'150'}) }}
+    </div>
 </div>
 
 {{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/firewall/' ~ entrypoint ~ '/apply'}) }}

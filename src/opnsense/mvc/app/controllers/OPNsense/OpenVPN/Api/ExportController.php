@@ -185,7 +185,7 @@ class ExportController extends ApiControllerBase
     public function accountsAction($vpnid = null)
     {
         $result = [
-            null => [
+            '' => [
                 "description" => gettext("(none) Exclude certificate from export"),
                 "users" => []
             ]
@@ -196,7 +196,7 @@ class ExportController extends ApiControllerBase
             foreach (Config::getInstance()->object()->system->user as $user) {
                 $usernames[] = (string)$user->name;
             }
-            foreach ((new Cert(true))->cert->iterateItems() as $cert) {
+            foreach ((new Cert())->cert->iterateItems() as $cert) {
                 if ($cert->caref == $server['caref']) {
                     $result[(string)$cert->refid] = [
                         "description" => (string)$cert->descr,
@@ -274,6 +274,7 @@ class ExportController extends ApiControllerBase
     {
         $result = array("result" => "failed");
         if ($this->request->isPost()) {
+            $this->throwReadOnly();
             $result = $this->validatePresetsAction($vpnid);
             if ($result['result'] == 'ok' && $result['changed']) {
                 $this->getModel()->serializeToConfig();
@@ -317,6 +318,15 @@ class ExportController extends ApiControllerBase
                 if ($certref !== null) {
                     $cert = (new Store())->getCertificate($certref);
                     if ($cert) {
+                        if (
+                            $cert['caref'] != $server['caref'] ||
+                            !in_array($cert['cert_type'], ['usr_cert', 'combined_server_client'])
+                        ) {
+                            throw new UserException(
+                                gettext("Certificate does not belong to server CA"),
+                                gettext("OpenVPN export")
+                            );
+                        }
                         if (!empty($cert['subject']) && !empty($cert['subject']['CN'])) {
                             $config['client_cn'] = $cert['subject']['CN'];
                             $config['client_crt'] = $cert['crt'];
@@ -324,7 +334,7 @@ class ExportController extends ApiControllerBase
                         }
                     }
                     if (empty($config['client_cn'])) {
-                        throw new UserException("Client certificate not found", gettext("OpenVPN export"));
+                        throw new UserException(gettext("Client certificate not found"), gettext("OpenVPN export"));
                     }
                 }
 

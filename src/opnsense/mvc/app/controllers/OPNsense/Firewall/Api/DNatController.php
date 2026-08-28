@@ -28,10 +28,8 @@
 
 namespace OPNsense\Firewall\Api;
 
-use OPNsense\Base\UserException;
+use OPNsense\Core\Backend;
 use OPNsense\Core\Config;
-use OPNsense\Firewall\Category;
-use OPNsense\Firewall\Util;
 
 class DNatController extends FilterBaseController
 {
@@ -39,91 +37,164 @@ class DNatController extends FilterBaseController
     protected static $internalModelClass = 'OPNsense\\Firewall\\DNat';
     protected static $categorysource = 'rule';
 
-    /**
-     * @inheritdoc
-     */
-    protected function setBaseHook($node)
+    // ignore in addition to the fields in FilterBaseController
+    private array $export_ignore_extra = [
+        'source.address',
+        'destination.address',
+        'categories',
+        'associated-rule-id',
+    ];
+
+    private function getAutomaticDestinationNatRules(): array
     {
-        $node->updated->time = sprintf('%0.2f', microtime(true));
-        $node->updated->username = $this->getUserName();
-        $node->updated->description = sprintf('%s made changes', $_SERVER['SCRIPT_NAME']);
-        if ($node->created->time->isEmpty()) {
-            $node->created->time = $node->updated->time;
-            $node->created->username = $node->updated->username;
-            $node->created->description = $node->updated->description;
+        $automatic_rules = json_decode((new Backend())->configdRun('filter list automatic_destination_nat'), true) ?? [];
+        $config = Config::getInstance()->object();
+        $rows = [];
+        $sequence = 1;
+
+        foreach ($automatic_rules as $provider => $rules) {
+            foreach ($rules as $rule) {
+                $interface = $rule['interface'] ?? '';
+                $descr = (string)($config->interfaces->{$interface}->descr ?? strtoupper($interface));
+
+                $rows[] = [
+                    'uuid' => sprintf('automatic_%s_%d', $provider, $sequence),
+                    'ipprotocol' => $rule['ipprotocol'] ?? '',
+                    '%ipprotocol' => ['inet' => 'IPv4', 'inet6' => 'IPv6'][$rule['ipprotocol'] ?? ''] ?? '*',
+                    'protocol' => $rule['protocol'] ?? '',
+                    '%protocol' => strtoupper($rule['protocol'] ?? ''),
+                    'disabled' => '0',
+                    'nordr' => !empty($rule['nordr']) ? '1' : '0',
+                    'interface' => $interface,
+                    '%interface' => $descr,
+                    'source.network' => $rule['from'] ?? ($rule['source']['network'] ?? ''),
+                    'source.port' => $rule['from_port'] ?? ($rule['source']['port'] ?? ''),
+                    'source.not' => !empty($rule['from_not']) ? '1' : '0',
+                    'destination.network' => $rule['to'] ?? ($rule['destination']['network'] ?? ''),
+                    'destination.port' => $rule['to_port'] ?? ($rule['destination']['port'] ?? ''),
+                    'destination.not' => !empty($rule['to_not']) ? '1' : '0',
+                    'target' => $rule['target'] ?? '',
+                    'local-port' => $rule['localport'] ?? '',
+                    'natreflection' => $rule['natreflection'] ?? '',
+                    'descr' => $rule['descr'] ?? '',
+                    'is_automatic' => true,
+                    'ref' => $rule['#ref'] ?? '',
+                    // Automatic DNAT rule priority should be same as firewall automatic rules
+                    'sort_order' => sprintf('%d.0%06d', 100000, $sequence),
+                    'prio_group' => '100000',
+                ];
+                $sequence++;
+            }
         }
+
+        return $rows;
+    }
+
+    private function getConfiguredDestinationNatRules(): array
+    {
+        $rows = [];
+        $configObj = Config::getInstance()->object();
+
+        foreach ($this->getModel()->rule->iterateItems() as $uuid => $node) {
+            $record = ['uuid' => $uuid];
+            $reflen = strlen($node->__reference) + 1;
+
+            /* flatten nested source/destination containers */
+            foreach ($node->getFlatNodes() as $key => $field) {
+                /* XXX: duplicate model-to-grid conversion from UIModelGrid, not ideal but works for now */
+                $fieldname = substr($key, $reflen);
+                $descr = $field->getDescription();
+                $record[$fieldname] = $field->getValue();
+                if ($record[$fieldname] != $descr) {
+                    $record['%' . $fieldname] = $descr;
+                }
+            }
+
+            // Normal DNAT rule priority should be same as firewall interface rules
+            // This is only used for visualization to ensure the tabulator tree renders
+            // rules in the correct order, similar to firewall rules.
+            // It does not influence the processing order of the ruleset by sequence.
+            $interfaces = !empty($record['interface']) ? explode(',', $record['interface']) : [];
+            $has_interface = false;
+
+            foreach ($interfaces as $interface) {
+                if (isset($configObj?->interfaces?->$interface)) {
+                    $has_interface = true;
+                    break;
+                }
+            }
+
+            // Default
+            $priority = 400000;
+
+            // Invalid rules (not applied by PF)
+            if (!empty($interfaces) && !$has_interface) {
+                $priority = 600000;
+            }
+
+            $record['sort_order'] = sprintf('%d.0%06d', $priority, (int)($record['sequence'] ?? 0));
+            $record['prio_group'] = (string)$priority;
+
+            $rows[] = $record;
+        }
+
+        return $rows;
     }
 
     public function searchRuleAction()
     {
         $category = (array)$this->request->get('category');
-        $filter_funct = function ($record) use ($category) {
+
+        /* combine before sorting and pagination */
+        $allrules = array_merge(
+            $this->getConfiguredDestinationNatRules(),
+            $this->getAutomaticDestinationNatRules()
+        );
+
+        $filter_funct = function (&$record) use ($category) {
             /* categories are indexed by name in the record, but offered as uuid in the selector */
-            $catids = !empty((string)$record->categories) ? explode(',', (string)$record->categories) : [];
-            return empty($category) || array_intersect($catids, $category);
-        };
+            $catids = !empty($record['categories']) ? explode(',', $record['categories']) : [];
 
-        $results =  $this->searchBase("rule", null, "sequence", $filter_funct);
+            /* offer list of colors to be used by the frontend */
+            $record['category_colors'] = $this->getCategoryColors(
+                !empty($record['categories']) ? explode(',', $record['categories']) : []
+            );
 
-        /* carry results */
-        foreach ($results['rows'] as &$record) {
-            /* offer list of colors to be used by the frontend  */
-            $record['category_colors'] = $this->getCategoryColors(explode(',', $record['categories']));
-            /* format "networks" and ports */
+            /* format networks and ports */
             foreach (['source.network','source.port','destination.network','destination.port', 'target', 'local-port'] as $field) {
                 if (!empty($record[$field])) {
                     $record["alias_meta_{$field}"] = $this->getNetworks($record[$field]);
                 }
             }
-        }
 
-        foreach (Util::getAntiLockout() as $if => $ports) {
-            $ifname = Config::getInstance()->object()->interfaces->$if?->name ?? strtoupper($if);
-            foreach ($ports as $idx => $port) {
-                array_unshift($results['rows'], [
-                    'uuid' => 'lockout_' . $idx,
-                    'ipprotocol' => '', /* renders as asterisk */
-                    'protocol' => 'tcp',
-                    '%protocol' => 'TCP',
-                    'disabled' => '0',
-                    'nordr' => '1',
-                    'interface' => $if,
-                    '%interface' => $ifname,
-                    'destination.network' => $if . 'ip',
-                    'destination.port' => $port,
-                    'alias_meta_destination.port' => $this->getNetworks($port),
-                    'alias_meta_destination.network' => $this->getNetworks($if . 'ip'),
-                    'descr' => gettext('Anti-Lockout Rule'),
-                    'category' => gettext('Automatically generated rules')
-                ]);
-            }
-        }
+            return empty($category) || array_intersect($catids, $category);
+        };
 
-
-        return $results;
+        return $this->searchRecordsetBase(
+            $allrules,
+            null,
+            'sort_order',
+            $filter_funct,
+            SORT_NATURAL | SORT_FLAG_CASE
+        );
     }
 
     public function setRuleAction($uuid)
     {
-        /* prevent created metadata being overwritten or offered */
-        if (is_array($_POST['rule']) && isset($_POST['rule']['created'])) {
-            unset($_POST['rule']['created']);
-        }
         return $this->setBase("rule", "rule", $uuid);
     }
 
     public function addRuleAction()
     {
-        /* prevent created metadata being overwritten or offered */
-        if (is_array($_POST['rule']) && isset($_POST['rule']['created'])) {
-            unset($_POST['rule']['created']);
-        }
         return $this->addBase("rule", "rule");
     }
 
     public function getRuleAction($uuid = null)
     {
-        return $this->getBase("rule", "rule", $uuid);
+        return $this->setCopySequence(
+            $this->getBase("rule", "rule", $uuid),
+            $this->getModel()->rule
+        );
     }
 
     public function delRuleAction($uuid)
@@ -161,5 +232,15 @@ class DNatController extends FilterBaseController
     public function toggleRuleLogAction($uuid, $log)
     {
         return $this->toggleRuleLogBase($uuid, $log, 'rule');
+    }
+
+    public function downloadRulesAction()
+    {
+        return $this->downloadRulesBase('rule', $this->export_ignore_extra);
+    }
+
+    public function uploadRulesAction()
+    {
+        return $this->uploadRulesBase('rule', $this->export_ignore_extra);
     }
 }

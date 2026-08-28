@@ -38,17 +38,17 @@ export default class Services extends BaseTableWidget {
     }
 
     getMarkup() {
-        return $(`<div id="services-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); padding: 5px; gap: 5px;"></div>`);
+        return $(`<div id="services-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));"></div>`);
     }
 
-    serviceControl(actions) {
+    serviceControl(actions, status) {
         return actions.map(({ action, id, title, icon }) => `
-            <button data-service_action="${action}" data-service="${id}"
-                  class="btn btn-xs btn-default srv_status_act2"
-                  style="font-size: 10px; padding: 2px 6px;"
+            <span data-service_action="${action}" data-service="${id}"
+                  class="srv_status_act2 text-${status}"
+                  style="cursor: pointer"
                   title="${title}" data-toggle="tooltip">
                 <i class="fa fa-fw fa-${icon}"></i>
-            </button>
+            </span>
         `).join('');
     }
 
@@ -69,61 +69,42 @@ export default class Services extends BaseTableWidget {
 
         for (const service of data.rows) {
             let actions = [];
+            let pad = false
             if (service.locked) {
+                pad = true
                 actions.push({ action: 'restart', id: service.id, title: this.translations.restart, icon: 'refresh' });
             } else if (service.running) {
-                actions.push({ action: 'restart', id: service.id, title: this.translations.restart, icon: 'refresh' });
                 actions.push({ action: 'stop', id: service.id, title: this.translations.stop, icon: 'stop' });
+                actions.push({ action: 'restart', id: service.id, title: this.translations.restart, icon: 'refresh' });
             } else {
+                pad = true
                 actions.push({ action: 'start', id: service.id, title: this.translations.start, icon: 'play' });
             }
 
             let statusColor = service.running ? 'success' : 'danger';
-            let statusIcon = service.running ? 'play' : 'stop';
             let statusTitle = service.running ? this.translations.running : this.translations.stopped;
+            let padSpan = '';
+            if (pad) {
+                padSpan = '<span><i class="fa fa-fw"></i></span>'
+            }
 
             let $tile = $(`
-                <div class="service-tile" style="
-                    border: 1px solid #e5e5e5;
-                    border-radius: 4px;
-                    padding: 8px;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    background-color: #fff;
-                    box-shadow: 0 1px 1px rgba(0,0,0,0.05);
-                ">
+                <div class="flextable-row" style="padding: 0 10px 0 10px;"><div class="service-tile" style="display: flex; align-items: center; min-width: 0; grid-column: -2 / -1;">
+                    ${padSpan}${this.serviceControl(actions, statusColor)}
                     <div style="
-                        font-weight: bold;
-                        font-size: 12px;
-                        margin-bottom: 5px;
+                        padding: 4px;
                         white-space: nowrap;
+                        font-weight: 500;
                         overflow: hidden;
                         text-overflow: ellipsis;
                         width: 100%;
-                        text-align: center;
-                        color: #555;
-                    " title="${service.description}" data-toggle="tooltip">${service.description}</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1.2fr; align-items: center; gap: 0px; width: 100%;">
-                        <div style="text-align: right; padding-right: 10px;">
-                            <span class="label label-opnsense label-opnsense-xs label-${statusColor} service-status"
-                                data-toggle="tooltip" title="${statusTitle}"
-                                style="font-size: 10px; padding: 3px 6px;">
-                                <i class="fa fa-${statusIcon} fa-fw"></i>
-                            </span>
-                        </div>
-                        <div style="text-align: left;">
-                            <div class="btn-group" role="group">
-                                ${this.serviceControl(actions)}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                        text-align: left;
+                    " title="${service.description} (${statusTitle})" data-toggle="tooltip">${service.description}</div>
+                </div></div>
             `);
 
             $container.append($tile);
         }
-
 
         $('.srv_status_act2').on('click', async (event) => {
             this.locked = true;

@@ -45,15 +45,15 @@ class FilterController extends \OPNsense\Base\IndexController
      */
     protected function getAdvancedIds($form)
     {
-        $advancedFieldIds = ['icmptype', 'icmp6type']; // force-include, hidden based on user input
-        $exclude = ['sequence', 'sort_order']; // force-exclude even if advanced
+        $advancedFieldIds = ['icmptype', 'icmp6type', 'statetype']; // force-include, hidden based on user input
+        $exclude = ['sequence', 'sort_order', 'interfacenot', 'received-on-not']; // force-exclude even if advanced
 
-        foreach ($form as $field) {
-            if (!empty($field['advanced']) && $field['advanced'] == "true") {
-                if (!empty($field['id'])) {
+        foreach ($form['sections'] as $section) {
+            foreach ($section['children'] ?? [] as $field) {
+                if ($field['advanced'] == 'true' && !empty($field['id'])) {
                     $tmp = explode('.', $field['id']);
                     $fieldId = $tmp[count($tmp) - 1];
-                    if (!in_array($fieldId, $exclude) && !in_array($field, $advancedFieldIds)) {
+                    if (!in_array($fieldId, array_merge($exclude, $advancedFieldIds))) {
                         $advancedFieldIds[] = $fieldId;
                     }
                 }

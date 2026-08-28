@@ -49,7 +49,7 @@ function restore_config_section($section_sets, $new_contents)
 {
     global $config;
 
-    $tmpxml = '/tmp/tmpxml';
+    $tmpxml = '/var/lib/php/tmp/tmpxml';
     $xml = null;
 
     try {
@@ -353,7 +353,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     gettext(
                         "Interfaces do not seem to match, please check the %sassignments%s now for missing devices."
                     ),
-                    '<a href="/interfaces_assign.php">',
+                    '<a href="/ui/interfaces/assignment">',
                     '</a>'
                 );
                 if ($do_reboot) {
@@ -407,7 +407,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     }
                 }
             }
-            system_cron_configure();
+            configd_run('cron restart');
         }
     } elseif (!empty($pconfig['save'])) {
         if ($pconfig['backupcount'] != null && (!is_numeric($pconfig['backupcount']) || $pconfig['backupcount'] <= 0)) {

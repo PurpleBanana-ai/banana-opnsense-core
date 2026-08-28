@@ -17,6 +17,16 @@
         </grid_view>
     </field>
     <field>
+        <id>rule.sort_order</id>
+        <label>Sort order</label>
+        <type>ignore</type>
+        <grid_view>
+            <sequence>10</sequence>
+            <visible>false</visible>
+            <order>asc</order>
+        </grid_view>
+    </field>
+    <field>
         <id>rule.sequence</id>
         <label>Sequence</label>
         <type>text</type>
@@ -24,7 +34,6 @@
         <advanced>true</advanced>
         <grid_view>
             <visible>false</visible>
-            <order>asc</order>
         </grid_view>
     </field>
     <field>
@@ -36,6 +45,18 @@
             <formatter>category</formatter>
             <sequence>1</sequence>
             <width>80</width>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.nosync</id>
+        <label>No XMLRPC Sync</label>
+        <type>checkbox</type>
+        <help>Exclude this item from the HA synchronization process. An already existing item with the same UUID on the synchronization target will not be altered or deleted as long as this is active.</help>
+        <advanced>true</advanced>
+        <grid_view>
+            <visible>false</visible>
+            <type>boolean</type>
+            <formatter>boolean</formatter>
         </grid_view>
     </field>
     <field>
@@ -171,7 +192,7 @@
         <label>Translate Source IP</label>
         <type>text</type>
         <style>net_selector</style>
-        <help>Packets matching this rule will be mapped to the IP address given here.</help>
+        <help>Packets matching this rule will be mapped to the IP address given here. Leave empty to use the selected interface address automatically.</help>
         <grid_view>
             <formatter>alias</formatter>
             <sequence>90</sequence>
@@ -183,7 +204,7 @@
         <label>Translate Source Port</label>
         <type>text</type>
         <style>port_selector</style>
-        <help>Source port number or well known name (imap, imaps, http, https, ...)</help>
+        <help>Source port number, well-known name, range, or alias containing a single port or range.</help>
         <grid_view>
             <formatter>alias</formatter>
             <sequence>95</sequence>
@@ -196,7 +217,20 @@
         <type>checkbox</type>
         <help>prevents the firewall from modifying the source port on TCP and UDP packets</help>
         <grid_view>
-            <ignore>true</ignore>
+            <visible>false</visible>
+            <type>boolean</type>
+            <formatter>boolean</formatter>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.endpoint-independent</id>
+        <label>Endpoint Independent</label>
+        <type>checkbox</type>
+        <help>Enables "full-cone" NAT behavior by mapping the NAT address and port to the same ones based on their UDP source</help>
+        <grid_view>
+            <visible>false</visible>
+            <type>boolean</type>
+            <formatter>boolean</formatter>
         </grid_view>
     </field>
     <field>
@@ -226,6 +260,17 @@
         </grid_view>
     </field>
     <field>
+        <id>rule.tag</id>
+        <label>Set local tag</label>
+        <type>text</type>
+        <help>You can mark a packet matching this rule and use this mark to match on other NAT/filter rules.</help>
+        <advanced>true</advanced>
+        <grid_view>
+            <visible>false</visible>
+            <sortable>false</sortable>
+        </grid_view>
+    </field>
+    <field>
         <id>rule.tagged</id>
         <label>Match local tag</label>
         <type>text</type>
@@ -234,6 +279,80 @@
         <grid_view>
             <visible>false</visible>
             <sortable>false</sortable>
+        </grid_view>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Audit</label>
+        <collapse>true</collapse>
+    </field>
+    <field>
+        <type>subheader</type>
+        <label>Created</label>
+    </field>
+    <field>
+        <id>rule.audit.created.username</id>
+        <label>Username</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.created.time</id>
+        <label>Time</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.created.description</id>
+        <label>Description</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <type>subheader</type>
+        <label>Updated</label>
+    </field>
+    <field>
+        <id>rule.audit.updated.username</id>
+        <label>Username</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.updated.time</id>
+        <label>Time</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.updated.description</id>
+        <label>Description</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <type>subheader</type>
+        <label>Userdata</label>
+    </field>
+    <field>
+        <id>rule.audit.userdata.note</id>
+        <label>Note</label>
+        <type>textbox</type>
+        <help>Add a note to describe why this rule was created or changed.</help>
+        <grid_view>
+            <ignore>true</ignore>
         </grid_view>
     </field>
 </form>

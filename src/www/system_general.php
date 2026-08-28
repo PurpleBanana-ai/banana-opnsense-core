@@ -34,6 +34,7 @@ require_once("interfaces.inc");
 
 $all_intf_details = legacy_interfaces_details();
 $a_gateways = (new \OPNsense\Routing\Gateways())->gatewaysIndexedByName();
+$a_zoneinfo = get_zoneinfo();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (!empty($_GET['getpic'])) {
@@ -62,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $pconfig['dnssearchdomain'] = !empty($config['system']['dnssearchdomain']) ? explode(',', $config['system']['dnssearchdomain']) : [];
     $pconfig['domain'] = $config['system']['domain'];
     $pconfig['hostname'] = $config['system']['hostname'];
-    $pconfig['language'] = $config['system']['language'];
+    $pconfig['language'] = $config['system']['language'] ?? null;
     $pconfig['prefer_ipv4'] = isset($config['system']['prefer_ipv4']);
     $pconfig['theme'] = $config['theme'] ?? '';
     $pconfig['timezone'] = empty($config['system']['timezone']) ? 'Etc/UTC' : $config['system']['timezone'];
@@ -130,6 +131,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $input_errors[] = gettext("A search domain may only contain the characters a-z, 0-9, '-' and '.'.");
             }
         }
+    }
+    if (!in_array($pconfig['timezone'], $a_zoneinfo)) {
+        $input_errors[] = gettext('The selected time zone is invalid.');
     }
 
     /* collect direct attached networks and static routes */
@@ -201,7 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $config['system']['dnsallowoverride'] = !empty($pconfig['dnsallowoverride']) ? '1' : '0';
         $config['system']['dnsallowoverride_exclude'] = implode(',', $pconfig['dnsallowoverride_exclude']);
 
-        if ($pconfig['dnslocalhost'] == 'yes') {
+        if (!empty($pconfig['dnslocalhost'])) {
             $config['system']['dnslocalhost'] = true;
         } elseif (isset($config['system']['dnslocalhost'])) {
             unset($config['system']['dnslocalhost']);
@@ -251,19 +255,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
         }
 
-        write_config();
+        if (write_config()) {
+            foreach ($staleroutes as $staleroute) {
+                /* explicit flush before proceeding */
+                system_host_route($staleroute, null);
+            }
 
-        foreach ($staleroutes as $staleroute) {
-            /* explicit flush before proceeding */
-            system_host_route($staleroute, null);
+            configd_run('service restart timezone'); /* time zone change first */
+            configd_run('service restart hostname');
+            configd_run('dns reload');
+            configd_run('plugins configure dns');
+            configd_run('plugins configure dhcp');
+            configd_run('filter reload');
         }
 
-        system_timezone_configure(); /* time zone change first */
-        system_hostname_configure();
-        system_resolver_configure();
-        plugins_configure('dns');
-        plugins_configure('dhcp');
-        filter_configure();
 
         header(url_safe('Location: /system_general.php?savemsg=%s', ['The changes have been applied successfully.']));
         exit;
@@ -353,13 +358,11 @@ $( document ).ready(function() {
               <td><a id="help_for_timezone" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> <?=gettext("Time zone"); ?></td>
               <td>
                 <select name="timezone" id="timezone" data-size="10" class="selectpicker" data-style="btn-default" data-live-search="true">
-<?php
-                  foreach (get_zoneinfo() as $value): ?>
-                  <option value="<?=htmlspecialchars($value);?>" <?= $value == $pconfig['timezone'] ? 'selected="selected"' : '' ?>>
-                    <?=htmlspecialchars($value);?>
+<?php foreach ($a_zoneinfo as $value): ?>
+                  <option value="<?= html_safe($value) ?>" <?= $value == $pconfig['timezone'] ? 'selected="selected"' : '' ?>>
+                    <?= html_safe($value) ?>
                   </option>
-<?php
-                  endforeach; ?>
+<?php endforeach ?>
                 </select>
                 <div class="hidden" data-for="help_for_timezone">
                   <?=gettext("Select the location closest to you"); ?>
@@ -370,13 +373,11 @@ $( document ).ready(function() {
               <td><a id="help_for_language" href="#" class="showhelp"><i class="fa fa-info-circle"></i></a> <?=gettext("Language");?></td>
               <td>
                 <select name="language" class="selectpicker" data-style="btn-default" data-dropup-auto="true" data-size="10">
-<?php
-                  foreach (get_locale_list() as $lcode => $ldesc):?>
-                  <option value="<?=$lcode;?>" <?= $lcode == $pconfig['language'] ? 'selected="selected"' : '' ?>>
-                    <?=$ldesc;?>
+<?php foreach (get_locale_list() as $lcode => $ldesc): ?>
+                  <option value="<?= html_safe($lcode) ?>" <?= $lcode == $pconfig['language'] ? 'selected="selected"' : '' ?>>
+                    <?= html_safe($ldesc) ?>
                   </option>
-<?php
-                  endforeach;?>
+<?php endforeach ?>
                 </select>
                 <div class="hidden" data-for="help_for_language">
                   <?= gettext('Choose a language for the web GUI.') ?>

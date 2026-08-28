@@ -55,6 +55,8 @@ def run_watcher(target_filename, default_domain, watch_file, service_pid):
     last_cleanup = time.time()
 
     while True:
+        dhcpd_changed = False
+
         for lease in dhcpdleases.watch():
             if 'ends' in lease and lease['ends'] > time.time() \
                     and 'client-hostname' in lease and 'address' in lease and lease['client-hostname']:
@@ -95,8 +97,6 @@ def run_watcher(target_filename, default_domain, watch_file, service_pid):
 
             pid = int(open(service_pid).read())
             os.kill(pid, signal.SIGHUP)
-
-        dhcpd_changed = False
 
         # wait for next cycle
         time.sleep(1)

@@ -228,15 +228,31 @@
     </monit>
     <livelog>
         <filename>LiveLog.js</filename>
+        <link>/ui/diagnostics/log/core/system</link>
         <endpoints>
-            <endpoint>/api/diagnostics/log/core/system/*</endpoint>
+            <independent/>
         </endpoints>
         <translations>
             <title>Live Log</title>
-            <time>Time</time>
-            <severity>Severity</severity>
-            <process>Process</process>
-            <message>Message</message>
+            <noaccess>No access</noaccess>
+            <nosources>No log sources available</nosources>
+            <source>Log source</source>
+            <severity>Severity threshold</severity>
+            <severityemergency>Emergency</severityemergency>
+            <severityalert>Alert</severityalert>
+            <severitycritical>Critical</severitycritical>
+            <severityerror>Error</severityerror>
+            <severitywarning>Warning</severitywarning>
+            <severitynotice>Notice</severitynotice>
+            <severityinformational>Informational</severityinformational>
+            <severitydebug>Debug</severitydebug>
+            <searchfilter>Search filter</searchfilter>
+            <searchfilterplaceholder>e.g. dhcp error</searchfilterplaceholder>
+            <linecount>Lines to show</linecount>
+            <sourcelabel>Source</sourcelabel>
+            <thresholdlabel>Threshold</thresholdlabel>
+            <lineslabel>Lines</lineslabel>
+            <filterlabel>Filter</filterlabel>
         </translations>
     </livelog>
     <ipsecleases>
@@ -297,15 +313,14 @@
     </Wireguard>
     <services>
         <filename>Services.js</filename>
-        <link>/ui/core/service</link>
         <endpoints>
             <endpoint>/api/core/service/*</endpoint>
         </endpoints>
         <translations>
             <title>Services</title>
             <noservices>No services found</noservices>
-            <running>Running</running>
-            <stopped>Stopped</stopped>
+            <running>running</running>
+            <stopped>stopped</stopped>
             <restart>Restart</restart>
             <stop>Stop</stop>
             <start>Start</start>
@@ -371,7 +386,7 @@
     </certificates>
     <dnsmasqleases>
         <filename>DnsmasqLeases.js</filename>
-        <link>/ui/dnsmasq/settings</link>
+        <link>/ui/dnsmasq/leases</link>
         <endpoints>
             <endpoint>/api/dnsmasq/settings/*</endpoint>
             <endpoint>/api/dnsmasq/leases/*</endpoint>
@@ -385,8 +400,29 @@
             <notavailable>N/A</notavailable>
         </translations>
     </dnsmasqleases>
+    <kealeases>
+        <filename>KeaLeases.js</filename>
+        <link>/ui/kea/dhcp/v4#settings</link>
+        <endpoints>
+            <endpoint>/api/kea/dhcpv4/get</endpoint>
+            <endpoint>/api/kea/dhcpv6/get</endpoint>
+            <endpoint>/api/kea/leases4/search</endpoint>
+            <endpoint>/api/kea/leases6/search</endpoint>
+        </endpoints>
+        <translations>
+            <title>Kea DHCP</title>
+            <unconfigured>Kea is currently disabled.</unconfigured>
+            <noleases>No leases found.</noleases>
+            <leases>Leases</leases>
+            <leasesselect>Select amount of leases to show</leasesselect>
+            <notavailable>N/A</notavailable>
+        </translations>
+    </kealeases>
     <notes>
         <filename>Notes.js</filename>
+        <endpoints>
+            <independent/>
+        </endpoints>
         <translations>
             <title>Notes</title>
             <titleedit>Note editor</titleedit>

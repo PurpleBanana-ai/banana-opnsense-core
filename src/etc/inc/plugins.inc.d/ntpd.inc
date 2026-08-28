@@ -47,7 +47,7 @@ function ntpd_services()
 
     $pconfig = [];
     $pconfig['name'] = 'ntpd';
-    $pconfig['description'] = gettext('Network Time Daemon');
+    $pconfig['description'] = gettext('Ntpd');
     $pconfig['php']['restart'] = ['ntpd_configure_do'];
     $pconfig['php']['start'] = ['ntpd_configure_do'];
     /* the pidfile for ntpd is unreliable - DO NOT USE IT */
@@ -91,62 +91,62 @@ function ntpd_configure()
     ];
 }
 
-function ntpd_configure_gps($serialport)
+function ntpd_configure_gps($port)
 {
     global $config;
-    $gps_device = '/dev/gps0';
-    $serialport = '/dev/' . $serialport;
 
-    if (!file_exists($serialport)) {
+    $gps_device = '/dev/gps0';
+    $serialport = "/dev/{$port}";
+
+    @unlink($gps_device);
+
+    if (empty($port) || !preg_match('/^cua[a-z0-9.,{}]+$/i', $port)) {
+        return false;
+    } elseif (!file_exists($serialport) || filetype($serialport) != 'char') {
         return false;
     }
 
-    // Create symlink that ntpd requires
-    @unlink($gps_device);
     symlink($serialport, $gps_device);
 
-    /* Send the following to the GPS port to initialize the GPS */
-    if (isset($config['ntpd']['gps'])) {
-        $gps_init = base64_decode($config['ntpd']['gps']['initcmd']);
-    } else {
-        $gps_init = base64_decode(
-            'JFBVQlgsNDAsR1NWLDAsMCwwLDAqNTkNCiRQVUJYLDQwLEdMTCwwLDAsMC' .
-            'wwKjVDDQokUFVCWCw0MCxaREEsMCwwLDAsMCo0NA0KJFBVQlgsNDAsVlRH' .
-            'LDAsMCwwLDAqNUUNCiRQVUJYLDQwLEdTViwwLDAsMCwwKjU5DQokUFVCWC' .
-            'w0MCxHU0EsMCwwLDAsMCo0RQ0KJFBVQlgsNDAsR0dBLDAsMCwwLDANCiRQ' .
-            'VUJYLDQwLFRYVCwwLDAsMCwwDQokUFVCWCw0MCxSTUMsMCwwLDAsMCo0Ng' .
-            '0KJFBVQlgsNDEsMSwwMDA3LDAwMDMsNDgwMCwwDQokUFVCWCw0MCxaREEs' .
-            'MSwxLDEsMQ=='
-        );
-    }
+    $gps_init = base64_decode(
+        !empty($config['ntpd']['gps']['initcmd']) ?
+        $config['ntpd']['gps']['initcmd'] :
+        'JFBVQlgsNDAsR1NWLDAsMCwwLDAqNTkNCiRQVUJYLDQwLEdMTCwwLDAsMC' .
+        'wwKjVDDQokUFVCWCw0MCxaREEsMCwwLDAsMCo0NA0KJFBVQlgsNDAsVlRH' .
+        'LDAsMCwwLDAqNUUNCiRQVUJYLDQwLEdTViwwLDAsMCwwKjU5DQokUFVCWC' .
+        'w0MCxHU0EsMCwwLDAsMCo0RQ0KJFBVQlgsNDAsR0dBLDAsMCwwLDANCiRQ' .
+        'VUJYLDQwLFRYVCwwLDAsMCwwDQokUFVCWCw0MCxSTUMsMCwwLDAsMCo0Ng' .
+        '0KJFBVQlgsNDEsMSwwMDA3LDAwMDMsNDgwMCwwDQokUFVCWCw0MCxaREEs' .
+        'MSwxLDEsMQ=='
+    );
 
-    /* XXX: Why not file_put_contents to the device */
-    @file_put_contents('/tmp/gps.init', $gps_init);
-    `cat /tmp/gps.init > $serialport`;
+    file_put_contents($serialport, $gps_init);
 
-    /* Add /etc/remote entry in case we need to read from the GPS with tip */
-    if (intval(`grep -c '^gps0' /etc/remote`) == 0) {
-        $gpsbaud = '4800';
-        if (is_array($config['ntpd']) && is_array($config['ntpd']['gps']) && !empty($config['ntpd']['gps']['speed'])) {
-            switch ($config['ntpd']['gps']['speed']) {
-                case '16':
-                    $gpsbaud = '9600';
-                    break;
-                case '32':
-                    $gpsbaud = '19200';
-                    break;
-                case '48':
-                    $gpsbaud = '38400';
-                    break;
-                case '64':
-                    $gpsbaud = '57600';
-                    break;
-                case '80':
-                    $gpsbaud = '115200';
-                    break;
-            }
+    /* XXX this is wrong as it only ever appends once with the given speed */
+    if (shell_safe('grep -c "^gps0" /etc/remote') == '0') {
+        switch ($config['ntpd']['gps']['speed'] ?? '') {
+            case '16':
+                $gpsbaud = '9600';
+                break;
+            case '32':
+                $gpsbaud = '19200';
+                break;
+            case '48':
+                $gpsbaud = '38400';
+                break;
+            case '64':
+                $gpsbaud = '57600';
+                break;
+            case '80':
+                $gpsbaud = '115200';
+                break;
+            default:
+                $gpsbaud = '4800';
+                break;
         }
-        @file_put_contents("/etc/remote", "gps0:dv={$serialport}:br#{$gpsbaud}:pa=none:", FILE_APPEND);
+
+        /* add /etc/remote entry in case we need to read from the GPS with tip */
+        file_put_contents('/etc/remote', "gps0:dv={$serialport}:br#{$gpsbaud}:pa=none:", FILE_APPEND);
     }
 
     return true;
@@ -158,11 +158,13 @@ function ntpd_configure_pps($port)
     $serialport = "/dev/{$port}";
 
     @unlink($pps_device);
-    if (empty($port)) {
+
+    if (empty($port) || !preg_match('/^cua[a-z0-9.,{}]+$/i', $port)) {
         return false;
-    } elseif (!file_exists($serialport)) {
+    } elseif (!file_exists($serialport) || filetype($serialport) != 'char') {
         return false;
     }
+
     @symlink($serialport, $pps_device);
 
     return true;
@@ -212,8 +214,7 @@ function ntpd_configure_do($verbose = false)
     }
     $ntpcfg .= "\n";
 
-    /* Add PPS configuration */
-    if (!empty($config['ntpd']['pps']) && ntpd_configure_pps($config['ntpd']['pps']['port'])) {
+    if (ntpd_configure_pps($config['ntpd']['pps']['port'] ?? '')) {
         $ntpcfg .= "\n";
         $ntpcfg .= "# PPS Setup\n";
         $ntpcfg .= 'server 127.127.22.0';
@@ -250,14 +251,8 @@ function ntpd_configure_do($verbose = false)
         }
         $ntpcfg .= "\n";
     }
-    /* End PPS configuration */
 
-    /* Add GPS configuration */
-    if (
-        isset($config['ntpd']['gps']['port'])
-        && file_exists('/dev/' . $config['ntpd']['gps']['port'])
-        && ntpd_configure_gps($config['ntpd']['gps']['port'])
-    ) {
+    if (ntpd_configure_gps($config['ntpd']['gps']['port'] ?? '')) {
         $ntpcfg .= "\n";
         $ntpcfg .= "# GPS Setup\n";
         $ntpcfg .= 'server 127.127.20.0 mode ';
@@ -321,7 +316,6 @@ function ntpd_configure_do($verbose = false)
         }
         $ntpcfg .= "\n";
     }
-    /* End GPS configuration */
 
     $noselect = isset($config['ntpd']['noselect']) ? explode(' ', $config['ntpd']['noselect']) : [];
     $prefer = isset($config['ntpd']['prefer']) ? explode(' ', $config['ntpd']['prefer']) : [];
@@ -329,9 +323,11 @@ function ntpd_configure_do($verbose = false)
     $ispool = isset($config['ntpd']['ispool']) ? explode(' ', $config['ntpd']['ispool']) : [];
 
     $ntpcfg .= "\n\n# Upstream Servers\n";
-    /* foreach through ntp servers and write out to ntpd.conf */
+
     foreach (explode(' ', $config['system']['timeservers']) as $ts) {
-        /* Determine if Network Time Server is a pool or not */
+        /* do not allow newline injection */
+        $ts = str_replace(["\n", "\r"], '', $ts);
+
         if (in_array($ts, $ispool) || preg_match("/\.pool\.ntp\.org$/", $ts)) {
             $ntpcfg .= "pool {$ts}";
         } else {

@@ -23,7 +23,7 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 
-CORE_ABIS?=	26.1
+CORE_ABIS?=	26.7
 CORE_ADDITIONS?=#empty
 CORE_MESSAGE?=	Carry on my wayward son
 CORE_NAME?=	opnsense-devel
@@ -45,7 +45,7 @@ CORE_GROUP?=		${CORE_USER}
 CORE_GID?=		${CORE_UID}
 
 CORE_DEPENDS_aarch64?=	py${CORE_PYTHON}-duckdb \
-			py${CORE_PYTHON}-numpy1 \
+			py${CORE_PYTHON}-numpy \
 			py${CORE_PYTHON}-pandas \
 			suricata
 
@@ -67,6 +67,7 @@ CORE_DEPENDS?=		ca_root_nss \
 			hostwatch \
 			ifinfo \
 			iftop \
+			jq \
 			kea \
 			lighttpd \
 			monit \

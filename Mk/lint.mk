@@ -34,7 +34,7 @@ lint-shell:
 .for DIR in ${.CURDIR}/src
 .if exists(${DIR})
 	@for FILE in $$(find ${DIR} -name "*.sh" -type f); do \
-	    if [ "$$(head $${FILE} | grep -c '^#!\/')" == "0" ]; then \
+	    if [ "$$(head $${FILE} | grep -c '^#!\/')" = "0" ]; then \
 	        echo "Missing shebang in $${FILE}"; exit 1; \
 	    fi; \
 	    sh -n "$${FILE}" || exit 1; \
@@ -100,6 +100,9 @@ lint-model:
 		done; \
 		(grep '<ValidationMessage>[a-z ]' $${MODEL} || true) | while read LINE; do \
 			echo "$${MODEL}: $${LINE} does not start with an uppercase letter"; \
+		done; \
+		(xmllint $${MODEL} --xpath '//OptionValues/*[(name() = text() and not(@value)) or @value = text()]' 2> /dev/null | grep '^<' || true) | while read LINE; do \
+			echo "$${MODEL}: $${LINE} option key and value are the same"; \
 		done; \
 	done
 .endif

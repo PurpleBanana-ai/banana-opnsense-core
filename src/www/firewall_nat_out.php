@@ -44,22 +44,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = $pconfig['id'];
     }
     if (isset($pconfig['apply'])) {
-        write_config();
-        filter_configure();
-        clear_subsystem_dirty('natconf');
-        clear_subsystem_dirty('filter');
+        if (write_config()) {
+            configd_run('filter reload');
+            clear_subsystem_dirty('natconf');
+            clear_subsystem_dirty('filter');
+        }
     } elseif (isset($pconfig['save']) && $pconfig['save'] == "Save") {
         $mode = $config['nat']['outbound']['mode'];
         $config['nat']['outbound']['mode'] = $pconfig['mode'];
-        write_config();
-        mark_subsystem_dirty('natconf');
+        if (write_config()) {
+            mark_subsystem_dirty('natconf');
+        }
         header(url_safe('Location: /firewall_nat_out.php'));
         exit;
     } elseif (isset($pconfig['act']) && $pconfig['act'] == 'del' && isset($id)) {
         // delete single record
         unset($a_out[$id]);
-        write_config();
-        mark_subsystem_dirty('natconf');
+        if (write_config()) {
+            mark_subsystem_dirty('natconf');
+        }
         header(url_safe('Location: /firewall_nat_out.php'));
         exit;
     } elseif (isset($pconfig['act']) && $pconfig['act'] == 'del_x' && isset($pconfig['rule']) && count($pconfig['rule']) > 0) {
@@ -69,16 +72,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 unset($a_out[$rulei]);
             }
         }
-        write_config();
-        mark_subsystem_dirty('natconf');
+        if (write_config()) {
+            mark_subsystem_dirty('natconf');
+        }
         header(url_safe('Location: /firewall_nat_out.php'));
         exit;
     } elseif (isset($pconfig['act']) && in_array($pconfig['act'], array('toggle_enable', 'toggle_disable')) && isset($pconfig['rule']) && count($pconfig['rule']) > 0) {
         foreach ($pconfig['rule'] as $rulei) {
             $a_out[$rulei]['disabled'] = $pconfig['act'] == 'toggle_disable';
         }
-        write_config();
-        mark_subsystem_dirty('filter');
+        if (write_config()) {
+            mark_subsystem_dirty('filter');
+        }
         header(url_safe('Location: /firewall_nat_out.php'));
         exit;
     } elseif (isset($pconfig['act']) && $pconfig['act'] == 'move' && isset($pconfig['rule']) && count($pconfig['rule']) > 0) {
@@ -87,8 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = count($a_out);
         }
         $a_out = legacy_move_config_list_items($a_out, $id,  $pconfig['rule']);
-        write_config();
-        mark_subsystem_dirty('natconf');
+        if (write_config()) {
+            mark_subsystem_dirty('natconf');
+        }
         header(url_safe('Location: /firewall_nat_out.php'));
         exit;
     } elseif (isset($pconfig['act']) && $pconfig['act'] == 'toggle' && isset($id)) {
@@ -98,8 +104,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $a_out[$id]['disabled'] = true;
         }
-        write_config('Firewall: NAT: Outbound, toggle NAT rule');
-        mark_subsystem_dirty('natconf');
+        if (write_config('Firewall: NAT: Outbound, toggle NAT rule')) {
+            mark_subsystem_dirty('natconf');
+        }
         header(url_safe('Location: /firewall_nat_out.php'));
         exit;
     }
@@ -266,6 +273,13 @@ include("head.inc");
             print_info_box($savemsg);
         if (is_subsystem_dirty('natconf'))
             print_info_box_apply(gettext("The NAT configuration has been changed.")."<br />".gettext("You must apply the changes in order for them to take effect."));
+        print_info_box(
+            gettext("This legacy outbound NAT page is deprecated and will be replaced by the new Source NAT rules interface.") . "<br />" .
+            gettext("Use the migration assistant to export existing legacy outbound NAT rules and import them into the new interface.") . "<br /><br />" .
+            '<a class="btn btn-primary" href="/ui/firewall/migration">' .
+                '<i class="fa fa-external-link fa-fw"></i> ' . gettext("Open migration assistant") .
+            '</a> '
+        );
 ?>
         <form method="post" name="iform" id="iform">
           <input type="hidden" id="id" name="id" value="" />
@@ -558,22 +572,8 @@ include("head.inc");
             </table>
           </div>
         </section>
-<?php   endif; ?>
-<?php
-      // when automatic or hybrid, display "auto" table.
-      if ($mode == "automatic" || $mode == "hybrid"):
-        $fw = filter_core_get_initialized_plugin_system();
-        $intfv4 = array();
-        $intfnatv4 = array();
-        foreach ($fw->getInterfaceMapping() as $intf => $intfcf) {
-            if (!empty($intfcf['ifconfig']['ipv4']) && empty($intfcf['gateway'])) {
-                $intfv4[] = sprintf(gettext('%s networks'), $intfcf['descr']);
-            } elseif (substr($intfcf['if'], 0, 4) != 'ovpn' && !empty($intfcf['gateway'])) {
-                $intfnatv4[] = $intfcf;
-            }
-        }
-        $intfv4 = array_merge($intfv4, filter_core_get_default_nat_outbound_networks());
-?>
+<?php endif ?>
+<?php if ($mode == 'automatic' || $mode == 'hybrid'): ?>
         <section class="col-xs-12">
           <div class="__mb"></div>
           <div class="table-responsive content-box">
@@ -597,20 +597,20 @@ include("head.inc");
                   </tr>
               </thead>
               <tbody>
-<?php
-              foreach ($intfnatv4 as $natintf):
-?>
+<?php foreach (filter_auto_source_nat() as $natintf => $networks): ?>
+<?php   $networks_safe = html_safe(implode(', ', array_values($networks))); ?>
+<?php   $natintf_safe = html_safe(convert_friendly_interface_to_friendly_descr($natintf)); ?>
                 <tr>
                   <td>&nbsp;</td>
                   <td>
                     <span class="fa fa-play text-success" data-toggle="tooltip" title="<?=gettext("automatic outbound nat");?>"></span>
                   </td>
-                  <td><?= htmlspecialchars($natintf['descr']); ?></td>
-                  <td><?= implode(', ', $intfv4);?></td>
+                  <td><?= $natintf_safe ?></td>
+                  <td><?= $networks_safe ?></td>
                   <td class="hidden-xs hidden-sm">*</td>
                   <td class="hidden-xs hidden-sm">*</td>
                   <td class="hidden-xs hidden-sm">500</td>
-                  <td class="hidden-xs hidden-sm"><?= htmlspecialchars($natintf['descr']); ?></td>
+                  <td class="hidden-xs hidden-sm"><?= $natintf_safe ?></td>
                   <td class="hidden-xs hidden-sm">*</td>
                   <td class="hidden-xs hidden-sm"><?=gettext("YES");?></td>
                   <td><?=gettext('Auto created rule for ISAKMP');?></td>
@@ -620,25 +620,21 @@ include("head.inc");
                   <td>
                     <span class="fa fa-play text-success" data-toggle="tooltip" title="<?=gettext("automatic outbound nat");?>"></span>
                   </td>
-                  <td><?= htmlspecialchars($natintf['descr']); ?></td>
-                  <td><?= implode(', ', $intfv4);?></td>
+                  <td><?= $natintf_safe ?></td>
+                  <td><?= $networks_safe ?></td>
                   <td class="hidden-xs hidden-sm">*</td>
                   <td class="hidden-xs hidden-sm">*</td>
                   <td class="hidden-xs hidden-sm">*</td>
-                  <td class="hidden-xs hidden-sm"><?= htmlspecialchars($natintf['descr']); ?></td>
+                  <td class="hidden-xs hidden-sm"><?= $natintf_safe ?></td>
                   <td class="hidden-xs hidden-sm">*</td>
                   <td class="hidden-xs hidden-sm"><?=gettext("NO");?></td>
                   <td><?=gettext('Auto created rule');?></td>
                 </tr>
-<?php
-        endforeach;
-?>
+<?php endforeach ?>
               </table>
             </div>
           </section>
-<?php
-      endif;
-?>
+<?php endif ?>
         </form>
       </div>
     </div>

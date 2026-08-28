@@ -82,8 +82,9 @@ export default class OpenVPNClients extends BaseTableWidget {
             }
 
             if (!session.is_client) {
+                const existingClients = servers[id].clients;
                 servers[id] = session;
-                servers[id].clients = null;
+                servers[id].clients = existingClients;
             } else {
 
                 servers[id].clients.push(session);
@@ -132,7 +133,7 @@ export default class OpenVPNClients extends BaseTableWidget {
 
                                 <span class="ovpn-client-command ovpn-command-kill"
                                   data-row-id="${client.id}"
-                                  data-common-name="${client.common_name}"
+                                  data-common-name="${htmlSafe(client.common_name)}"
                                   style="cursor: pointer; float:right; margin-left: auto;"
                                   data-toggle="tooltip"
                                   title="${this.translations.kill}">

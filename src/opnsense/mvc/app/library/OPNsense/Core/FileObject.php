@@ -40,7 +40,7 @@ class FileObject
      * @param bool $operation flock operation mode when set
      * @param string $chown username to chown to
      */
-    public function __construct($filename, $mode, $permissions = null, $operation = null, string $chown = null)
+    public function __construct($filename, $mode, $permissions = null, $operation = null, ?string $chown = null)
     {
         $this->fhandle = fopen($filename, $mode . 'e');   /* always add close-on-exec flag to prevent fork inherit */
 
@@ -58,7 +58,7 @@ class FileObject
             if (!flock($this->fhandle, $operation)) {
                 fclose($this->fhandle);
                 $this->fhandle = null;
-                throw new Exception('Unable to open file in requested mode.');
+                throw new \Exception('Unable to open file in requested mode.');
             }
         }
     }

@@ -42,13 +42,13 @@ class Group extends BaseModel
         $sources = [
             ['filter', 'rule'],
             ['nat', 'rule'],
-            ['nat', 'onetoone'],
             ['nat', 'outbound', 'rule'],
         ];
         // mvc rules
         $sources[] = ['OPNsense', 'Firewall', 'Filter', 'rules', 'rule'];
         $sources[] = ['OPNsense', 'Firewall', 'Filter', 'snatrules', 'rule'];
         $sources[] = ['OPNsense', 'Firewall', 'Filter', 'npt', 'rule'];
+        $sources[] = ['OPNsense', 'Firewall', 'Filter', 'onetoone', 'rule'];
 
         foreach ($sources as $aliasref) {
             $cfgsection = Config::getInstance()->object();
@@ -125,9 +125,20 @@ class Group extends BaseModel
                 $isUsed = true;
             }
             foreach (['source', 'destination'] as $net) {
+                // legacy rules
                 if (!empty($node->$net) && !empty($node->$net->network) && (string)$node->$net->network == $name) {
                     $isUsed = true;
                 }
+                // mvc rules (source_net, destination_net)
+                $field = $net . '_net';
+                $value = (string)$node->$field;
+                if (!empty($value) && in_array($name, explode(',', $value))) {
+                    $isUsed = true;
+                }
+            }
+            // SNAT/DNAT target
+            if (!empty($node->target) && (string)$node->target === $name) {
+                $isUsed = true;
             }
             if ($isUsed) {
                 $result[$path] = !empty($node->descr) ? (string)$node->descr : "";

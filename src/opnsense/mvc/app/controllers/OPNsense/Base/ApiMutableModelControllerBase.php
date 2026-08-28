@@ -30,7 +30,7 @@
 
 namespace OPNsense\Base;
 
-use OPNsense\Core\ACL;
+use OPNsense\Base\FieldTypes\JsonAuditField;
 use OPNsense\Core\Config;
 use OPNsense\Core\Type;
 
@@ -58,6 +58,11 @@ abstract class ApiMutableModelControllerBase extends ApiControllerBase
      * @var bool use safe delete, search for references before allowing deletion
      */
     protected static $internalModelUseSafeDelete = false;
+
+    /**
+     * @var bool requires full admin (page-all) due to the sensitive nature of this controller
+     */
+    protected static $internalSaveRequiresAdmin = false;
 
     /**
      * Message to append to configuration change event
@@ -108,7 +113,9 @@ abstract class ApiMutableModelControllerBase extends ApiControllerBase
         $exclude_refs = [],
         $title = null
     ) {
-        if ($contains) {
+        if (!preg_match('/^[0-9a-z\-]{1,255}$/i', $token)) {
+            throw new UserException(gettext('Invalid input token provided'), gettext("Invalid token"));
+        } elseif ($contains) {
             $xpath = "//text()[contains(.,'{$token}')]";
         } else {
             $xpath = "//*[text() = '{$token}']";
@@ -319,21 +326,37 @@ abstract class ApiMutableModelControllerBase extends ApiControllerBase
      */
     protected function save($validateFullModel = false, $disable_validation = false)
     {
-        if (!(new ACL())->hasPrivilege($this->getUserName(), 'user-config-readonly')) {
-            if ($this->getModel()->serializeToConfig($validateFullModel, $disable_validation)) {
-                if ($this->internalAuditMessage) {
-                    Config::getInstance()->save(['description' => $this->internalAuditMessage]);
-                } else {
-                    /* default "endpoint made changes" message */
-                    Config::getInstance()->save();
-                }
+        $this->throwReadOnly();
+        if (static::$internalSaveRequiresAdmin) {
+            $this->throwNotFullAdmin();
+        }
+        if ($this->getModel()->serializeToConfig($validateFullModel, $disable_validation)) {
+            if ($this->internalAuditMessage) {
+                Config::getInstance()->save(['description' => $this->internalAuditMessage]);
+            } else {
+                /* default "endpoint made changes" message */
+                Config::getInstance()->save();
             }
-            return ["result" => "saved"];
-        } else {
-            // XXX remove user-config-readonly in some future release
-            throw new UserException(
-                sprintf("User %s denied for write access (user-config-readonly set)", $this->getUserName())
-            );
+        }
+        return ["result" => "saved"];
+    }
+
+    /**
+     * Update controller managed audit information when supported by the model node.
+     *
+     * @param $node model node to update
+     * @return void
+     */
+    protected function setAuditMetadata($node)
+    {
+        foreach ($node->iterateItems() as $field) {
+            if ($field instanceof JsonAuditField && !$field->getInternalIsVolatile()) {
+                $username = $this->getUserName();
+                if (!empty($_SERVER['REMOTE_ADDR'])) {
+                    $username .= '@' . $_SERVER['REMOTE_ADDR'];
+                }
+                $field->update($username, sprintf('%s made changes', $_SERVER['SCRIPT_NAME']));
+            }
         }
     }
 
@@ -413,8 +436,9 @@ abstract class ApiMutableModelControllerBase extends ApiControllerBase
         ) {
             $fields = [];
             foreach ($element->iterateItems() as $node) {
-                foreach ($node->iterateItems() as $key => $value) {
-                    $fields[] = $key;
+                $reflen = strlen($node->__reference) + 1;
+                foreach ($node->getFlatNodes() as $key => $val) {
+                    $fields[] = substr($key, $reflen);
                 }
                 break;
             }
@@ -493,6 +517,7 @@ abstract class ApiMutableModelControllerBase extends ApiControllerBase
             $result = $this->validate($node, $post_field);
 
             if (empty($result['validations'])) {
+                $this->setAuditMetadata($node);
                 $this->setBaseHook($node);
                 // save config if validated correctly
                 $this->save(false, true);
@@ -589,6 +614,7 @@ abstract class ApiMutableModelControllerBase extends ApiControllerBase
                 }
                 $result = $this->validate($node, $post_field, true);
                 if (empty($result['validations'])) {
+                    $this->setAuditMetadata($node);
                     $this->setBaseHook($node);
                     // save config if validated correctly
                     $this->save(false, true);
@@ -682,7 +708,7 @@ abstract class ApiMutableModelControllerBase extends ApiControllerBase
         $separator = $sep1 < $sep2 ? ',' : ';';
         fseek($stream, 0);
         $heading = [];
-        while (($line = fgetcsv($stream, null, $separator)) !== false) {
+        while (($line = fgetcsv($stream, null, $separator, "\"", "\\")) !== false) {
             if (empty($heading)) {
                 $heading = $line;
             } elseif (count($line) >= 1 && !is_null($line[array_key_first($line)])) {
@@ -712,12 +738,15 @@ abstract class ApiMutableModelControllerBase extends ApiControllerBase
                 $result = $node->importRecordSet($data, $keyfields, $data_callback, $node_callback);
                 $valmsgfields = [];
                 foreach ($this->getModel()->performValidation() as $msg) {
+                    $tmp = explode('.', substr($msg->getField(), strlen($path) + 1));
+                    $uuid = $tmp[0];
+                    if (!isset($result['uuids'][$uuid])) {
+                        continue; /* existing, but unvalid, record */
+                    }
                     if (str_starts_with($msg->getField(), $path) && !in_array($msg->getField(), $valmsgfields)) {
-                        $tmp = explode('.', substr($msg->getField(), strlen($path) + 1));
-                        $uuid = $tmp[0];
                         $fieldname = end($tmp);
                         $result['validations'][] = [
-                            'sequence' => $result['uuids'][$uuid] ?? null,
+                            'sequence' => $result['uuids'][$uuid],
                             'message' =>  $msg->getMessage(),
                             'field' => $fieldname
                         ];

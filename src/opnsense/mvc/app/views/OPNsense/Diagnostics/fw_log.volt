@@ -270,6 +270,7 @@
 
             this.bucket.subscribe(event => this._onBucketEvent(event));
             this.viewBuffer.subscribe(event => this._onViewBufferEvent(event));
+            this._decoder = document.createElement("textarea");
         }
 
         _init() {
@@ -340,7 +341,6 @@
          */
         _buildPredicate(field, operator, value) {
             const needle = String(value ?? '').toLowerCase().trim();
-
             let regex = null;
             if (operator === '~' || operator === '!~') {
                 try {
@@ -351,7 +351,12 @@
             }
 
             return (item) => {
-                const haystack = String(item?.[field] ?? '');
+                let haystack = String(item?.[field] ?? '');
+                if (haystack.indexOf("&") !== -1) {
+                    /* strings can be html encoded, decode them here to aid the filters */
+                    this._decoder.innerHTML = haystack;
+                    haystack = this._decoder.value;
+                }
 
                 switch (operator) {
                 case '~':
@@ -554,15 +559,6 @@
                         // make sure the hostname key exists
                         record['srchostname'] = hostnames.get(record.src);
                         record['dsthostname'] = hostnames.get(record.dst);
-
-                        // strings can be html encoded, decode them here to aid the filters
-                        // we skip decoding if "&" is not included in the string as setting innerHTML is very expensive.
-                        for (const key in record) {
-                            if (typeof record[key] === "string" && record[key].indexOf("&") !== -1) {
-                                decoder.innerHTML = record[key];
-                                record[key] = decoder.value;
-                            }
-                        }
                     }
 
                     resolve(data);
@@ -609,7 +605,7 @@
                 }
                 const $chip = $(`
                     <li class="filter-chip badge" data-id="${id}">
-                    <span>${f.field} ${operatorMap[f.operator].translation} “${f.format ?? f.value}”</span>
+                    <span>${f.field} ${operatorMap[f.operator].translation} “${f.format ?? htmlSafe(f.value)}”</span>
                     <button aria-label="Remove filter" title="Remove filter">&times;</button>
                     </li>
                 `);

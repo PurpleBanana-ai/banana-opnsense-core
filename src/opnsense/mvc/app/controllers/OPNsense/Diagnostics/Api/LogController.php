@@ -30,7 +30,6 @@ namespace OPNsense\Diagnostics\Api;
 
 use OPNsense\Base\ApiControllerBase;
 use OPNsense\Core\Backend;
-use OPNsense\Core\SanitizeFilter;
 
 /**
  * @inherit
@@ -100,7 +99,8 @@ class LogController extends ApiControllerBase
                     [$offset, $searchPhrase, $module, $scope, $severities],
                     [
                         'Content-Type: text/event-stream',
-                        'Cache-Control: no-cache'
+                        'Cache-Control: no-cache',
+                        'X-Accel-Buffering: no' /* disable nginx reverse proxy buffering for SSE streams to ensure real-time delivery */
                     ],
                     60 /* XXX */
                 );

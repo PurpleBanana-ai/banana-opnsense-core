@@ -318,7 +318,7 @@ class ACL
     /**
      * check if an endpoint url is accessible by the specified user.
      * @param string $username user name
-     * @param string $url full url, for example /firewall_rules.php
+     * @param string $url full url, for example /ui/firewall/filter
      * @return bool
      */
     public function isPageAccessible($username, $url)
@@ -358,7 +358,7 @@ class ACL
             foreach ($config->system->children() as $key => $node) {
                 if ($key == 'user' && (string)$node->name == $username) {
                     foreach ($node->priv as $priv) {
-                        $privs[] = (string)$priv;
+                        $privs = array_merge($privs, array_filter(explode(',', $priv)));
                     }
                     $uid = (string)$node->uid;
                 }

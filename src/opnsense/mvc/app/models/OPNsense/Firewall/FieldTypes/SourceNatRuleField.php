@@ -29,7 +29,11 @@
 namespace OPNsense\Firewall\FieldTypes;
 
 use OPNsense\Base\FieldTypes\ArrayField;
+use OPNsense\Base\FieldTypes\BooleanField;
 use OPNsense\Base\FieldTypes\ContainerField;
+use OPNsense\Base\FieldTypes\PortField;
+use OPNsense\Base\FieldTypes\ProtocolField;
+use OPNsense\Core\Config;
 
 /**
  * Class SourceNatRuleContainerField
@@ -59,12 +63,14 @@ class SourceNatRuleContainerField extends ContainerField
         foreach ($this->iterateItems() as $key => $node) {
             $target_fieldname = isset($source_mapper[$key]) ? $source_mapper[$key] : $key;
             if ($target_fieldname) {
-                if (is_a($node, "OPNsense\\Base\\FieldTypes\\BooleanField")) {
+                if (is_a($node, BooleanField::class)) {
                     $result[$target_fieldname] = !empty((string)$node);
-                } elseif (is_a($node, "OPNsense\\Base\\FieldTypes\\ProtocolField")) {
+                } elseif (is_a($node, ProtocolField::class)) {
                     if ((string)$node != 'any') {
                         $result[$target_fieldname] = (string)$node;
                     }
+                } elseif ($key == 'target_port' && is_a($node, PortField::class) && $node->getValue() != '') {
+                    $result[$target_fieldname] = (string)$node->normalizedPort();
                 } elseif ((string)$node != '') {
                     /*
                      * XXX: Omit empty values to allow array_merge() to overlay default values in Plugin.php.
@@ -95,6 +101,33 @@ class SourceNatRuleContainerField extends ContainerField
 
         return $result;
     }
+
+    /**
+     * Return the rule priority group.
+     *
+     * @return int
+     */
+    public function getPriority()
+    {
+        $configObj = Config::getInstance()->object();
+        $interfaces = $this->interface->getValues();
+        $has_interface = false;
+
+        foreach ($interfaces as $interface) {
+            if (isset($configObj?->interfaces?->$interface)) {
+                $has_interface = true;
+                break;
+            }
+        }
+
+        // Invalid rules (not applied by PF)
+        if (!empty($interfaces) && !$has_interface) {
+            return 600000;
+        }
+
+        // Default
+        return 400000;
+    }
 }
 
 /**
@@ -114,5 +147,20 @@ class SourceNatRuleField extends ArrayField
         $parentmodel = $this->getParentModel();
         $container_node->setParentModel($parentmodel);
         return $container_node;
+    }
+
+    protected function actionPostLoadingEvent()
+    {
+        foreach ($this->internalChildnodes as $node) {
+            /*
+             * Source NAT style rules do not have the same priority split as firewall
+             * rules, but should still expose sort_order for tree view grouping.
+             * If automatic rules are added later, they should either be 100000 (start) or 500000 (end of ruleset).
+             */
+            $node->sort_order = sprintf("%d.0%06d", $node->getPriority(), (string)$node->sequence);
+            $node->prio_group = (string)$node->getPriority();
+        }
+
+        return parent::actionPostLoadingEvent();
     }
 }

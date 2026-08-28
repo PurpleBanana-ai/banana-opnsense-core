@@ -98,20 +98,15 @@ function saveFormToEndpoint(url, formid, callback_ok, disable_dialog, callback_f
                     });
                 }
 
-                if (callback_fail !== undefined) {
+                if ( callback_fail !== undefined ) {
                     // execute callback function
                     callback_fail(data);
                 }
-            } else {
-                // trigger base apply button alert
-                $(document).trigger('settings-changed');
-
-                if (callback_ok !== undefined) {
-                    // execute callback function
-                    callback_ok(data);
-                }
+            } else if ( callback_ok !== undefined ) {
+                // execute callback function
+                callback_ok(data);
             }
-        } else if (callback_fail !== undefined) {
+        } else if ( callback_fail !== undefined ) {
             callback_fail(data);
         }
     });
@@ -430,20 +425,94 @@ function initFormHelpUI() {
     // handle all help messages show/hide
     let elements = $('[id*="show_all_help"]');
     elements.click(function(event) {
-        $(this).toggleClass("fa-toggle-on fa-toggle-off");
-        $(this).toggleClass("text-success text-danger");
-        if ($(this).hasClass("fa-toggle-on")) {
+        let element = $(this);
+        const $form = $(this).closest('form[id^="frm"]');
+        element.toggleClass("fa-toggle-on fa-toggle-off");
+        element.toggleClass("text-success text-danger");
+        if (element.hasClass("fa-toggle-on")) {
             if (window.sessionStorage) {
                 sessionStorage.setItem('all_help_preset', 1);
             }
-            $('[data-for*="help_for"]').addClass("show").removeClass("hidden");
+            $form.find('[data-for*="help_for"]').addClass("show").removeClass("hidden");
         } else {
-            $('[data-for*="help_for"]').addClass("hidden").removeClass("show");
+            $form.find('[data-for*="help_for"]').addClass("hidden").removeClass("show");
             if (window.sessionStorage) {
                 sessionStorage.setItem('all_help_preset', 0);
             }
         }
         event.preventDefault();
+    });
+
+    /**
+     * XXX: handle file input, part of the form init, but we should move all form init code to a single callout
+     *      currently initFormHelpUI, initFormAdvancedUI, addMultiSelectClearUI and initGlobalOpenShortcuts are
+     *      used in the same area.
+     **/
+    $("textarea.frm_file_type").each(function(){
+        const this_id = $(this).attr('id').replace(/\./g, '\\.');
+        const this_file_input = $("#" +this_id + '_filename');
+        const this_name = this_id + '__name';
+        /* drag and drop files to the name input */
+        if (!Object.getOwnPropertyDescriptor($.Event.prototype, "dataTransfer")) {
+            $.event.addProp('dataTransfer');
+        }
+        const reader_onload = function(readerEvt) {
+            let binary = "";
+            const bytes = new Uint8Array(readerEvt.target.result);
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+            }
+            $("#" + this_id ).val(btoa(binary));
+            $("#" + this_id +"_progress").removeClass("fa fa-spinner fa-pulse");
+            $("#" + this_id + "_icon").show();
+        };
+        /* via drag/drop */
+        $("#"+ this_name).on('dragenter dragleave dragover drop', function(event) {
+            event.preventDefault();
+            let sender = $(this);
+            switch (event.type) {
+                case 'dragover':
+                case 'dragenter':
+                    sender.css('font-style', 'italic');
+                    break;
+                case 'drop':
+                    if (event.dataTransfer.files !== undefined && event.dataTransfer.files[0] !== undefined) {
+                        sender.val(event.dataTransfer.files[0].name);
+                        $("#" + this_id + "_progress").addClass("fa fa-spinner fa-pulse");
+                        $("#" + this_id + "_icon").hide();
+                        let reader = new FileReader();
+                        reader.onload = reader_onload;
+                        reader.readAsArrayBuffer(event.dataTransfer.files[0]);
+                    }
+                case 'dragleave':
+                    sender.css('font-style', '');
+                    break;
+                default:
+            }
+        });
+        /* via button */
+        this_file_input.click(function(evt) {
+            $("#" + this_id + "_progress").addClass("fa fa-spinner fa-pulse");
+            $("#" + this_id + "_icon").hide();
+            this.value = null;
+        });
+        this_file_input.change(function(evt) {
+            if (evt.isTrigger !== undefined) {
+                this.value = null;
+                $("#" + this_id).val(null);
+                $("#" + this_name).val(null);
+            }
+            if (evt.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = reader_onload;
+                reader.readAsArrayBuffer(evt.target.files[0]);
+                $("#" + this_name).val(this_file_input.val().split('\\').pop());
+            } else {
+                $("#" + this_id + "_progress").removeClass("fa fa-spinner fa-pulse");
+                $("#" + this_id + "_icon").show();
+            }
+        });
     });
 
     if (window.sessionStorage && sessionStorage.getItem('all_help_preset') === "1") {
@@ -493,15 +562,17 @@ function initFormAdvancedUI() {
     }
 
     elements.click(function() {
-        elements.toggleClass("fa-toggle-on fa-toggle-off");
-        elements.toggleClass("text-success text-danger");
-        if (elements.hasClass("fa-toggle-on")) {
-            $('[data-advanced*="true"]').show();
+        let element = $(this);
+        const $form = $(this).closest('form[id^="frm"]');
+        element.toggleClass("fa-toggle-on fa-toggle-off");
+        element.toggleClass("text-success text-danger");
+        if (element.hasClass("fa-toggle-on")) {
+            $form.find('[data-advanced*="true"]').show();
             if (window.sessionStorage) {
                 sessionStorage.setItem('show_advanced_preset', 1);
             }
         } else {
-            $('[data-advanced*="true"]').hide()
+            $form.find('[data-advanced*="true"]').hide()
             if (window.sessionStorage) {
                 sessionStorage.setItem('show_advanced_preset', 0);
             }
@@ -524,17 +595,22 @@ function initGlobalOpenShortcuts() {
         const searchContext = $context.length > 0 ? $context : $(document);
 
         if (e.key === 'a' || e.key === 'A') {
-            const $adv = searchContext.find('[id*="show_advanced"]').first();
-            if ($adv.length) {
-                $adv.click();
+            searchContext.find('[id*="show_advanced"]').each(function () {
+                $(this).click();
+                e.preventDefault();
+            });
+        } else if (e.key === 'f' || e.key === 'F') {
+            /* In case multiple grids are present, use the first matching action bar in the current context */
+            const $maximize = searchContext.find('[id$="-actions-group"] button[id$="-maximize"]:visible').first();
+            if ($maximize.length) {
+                $maximize.click();
                 e.preventDefault();
             }
         } else if (e.key === 'h' || e.key === 'H') {
-            const $help = searchContext.find('[id*="show_all_help"]').first();
-            if ($help.length) {
-                $help.click();
+            searchContext.find('[id*="show_all_help"]').each(function () {
+                $(this).click();
                 e.preventDefault();
-            }
+            });
         }
     });
 }
@@ -627,6 +703,7 @@ stdDialogRemoveItem.defaults = {
  *      data-label="Apply text"
  *      data-icon="fa fa-icon"
  *      data-service-widget="service" (optional service widget to signal)
+ *      data-exclude-scope="tab id" (optional comma-separated tab ids to hide action button in)
  *      data-error-title="My error message"
  */
 $.fn.SimpleActionButton = function (params) {
@@ -655,6 +732,28 @@ $.fn.SimpleActionButton = function (params) {
         $(document).on("settings-changed", function () {
             $('#change_message_base_form').show().parent('.alert').addClass('alert-info').removeClass('content-box');
         });
+
+        const excludeScope = this_button?.data('exclude-scope');
+
+        if (excludeScope) {
+            const toggleVisiblity = (tabId) => {
+                if (excludeScope.split(',').map(s => s.trim()).includes(tabId)) {
+                    this_button.closest('section').hide();
+                } else {
+                    this_button.closest('section').show();
+                }
+            }
+
+            $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+                toggleVisiblity(e.target.id);
+            });
+
+            // run once on page load for tab marked active
+            const $initialTab = $('ul.nav-tabs li.active a[data-toggle="tab"]').first();
+            if ($initialTab.length) {
+                toggleVisiblity($initialTab.attr('id'));
+            }
+        }
 
         this_button.on('click', function () {
             const icon = this_button.find('.reload_progress');

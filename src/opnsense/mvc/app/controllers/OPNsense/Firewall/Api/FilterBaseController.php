@@ -31,7 +31,6 @@ namespace OPNsense\Firewall\Api;
 use OPNsense\Base\ApiMutableModelControllerBase;
 use OPNsense\Base\FieldTypes\PortField;
 use OPNsense\Base\UserException;
-use OPNsense\Core\ACL;
 use OPNsense\Core\Backend;
 use OPNsense\Core\Config;
 use OPNsense\Firewall\Alias;
@@ -47,6 +46,13 @@ abstract class FilterBaseController extends ApiMutableModelControllerBase
     protected static $internalModelName = 'filter';
     protected static $internalModelClass = 'OPNsense\Firewall\Filter';
     protected static $categorysource = null;
+
+    /* shared fields to ignore in csv export */
+    protected array $export_ignore = [
+        'sort_order',
+        'prio_group',
+        'audit',
+    ];
 
     /* store data for cached getters */
     private array $networks = [];
@@ -300,68 +306,12 @@ abstract class FilterBaseController extends ApiMutableModelControllerBase
         return $result;
     }
 
-    // XXX: Not directly used by GUI, should be removed at some point
-    public function applyAction($rollback_revision = null)
+    public function applyAction()
     {
-        // XXX: Privilege check is a workaround here
-        if ($this->request->isPost() && !(new ACL())->hasPrivilege($this->getUserName(), 'user-config-readonly')) {
-            if ($rollback_revision != null) {
-                // background rollback timer
-                (new Backend())->configdpRun('filter rollback_timer', [$rollback_revision], true);
-            }
-            return array("status" => (new Backend())->configdRun('filter reload'));
+        if ($this->request->isPost()) {
+            return ['status' => (new Backend())->configdRun('filter reload skip_alias')];
         } else {
-            return array("status" => "error");
-        }
-    }
-
-    // XXX: Not directly used by GUI, should be removed at some point
-    public function cancelRollbackAction($rollback_revision)
-    {
-        // XXX: Privilege check is a workaround here
-        if ($this->request->isPost() && !(new ACL())->hasPrivilege($this->getUserName(), 'user-config-readonly')) {
-            return array(
-                "status" => (new Backend())->configdpRun('filter cancel_rollback', [$rollback_revision])
-            );
-        } else {
-            return array("status" => "error");
-        }
-    }
-
-    // XXX: Not directly used by GUI, should be removed at some point
-    public function savepointAction()
-    {
-        // XXX: Privilege check is a workaround here
-        if ($this->request->isPost() && !(new ACL())->hasPrivilege($this->getUserName(), 'user-config-readonly')) {
-            // trigger a save, so we know revision->time matches our running config
-            Config::getInstance()->save();
-            return array(
-                "status" => "ok",
-                "retention" => (string)Config::getInstance()->backupCount(),
-                "revision" => (string)Config::getInstance()->object()->revision->time
-            );
-        } else {
-            return array("status" => "error");
-        }
-    }
-
-    // XXX: Not directly used by GUI, should be removed at some point
-    public function revertAction($revision)
-    {
-        // XXX: Privilege check is a workaround here
-        if ($this->request->isPost() && !(new ACL())->hasPrivilege($this->getUserName(), 'user-config-readonly')) {
-            Config::getInstance()->lock();
-            $filename = Config::getInstance()->getBackupFilename($revision);
-            if (!$filename) {
-                Config::getInstance()->unlock();
-                return ["status" => gettext("unknown (or removed) savepoint")];
-            }
-            $this->getModel()->rollback($revision);
-            Config::getInstance()->unlock();
-            (new Backend())->configdRun('filter reload');
-            return ["status" => "ok"];
-        } else {
-            return array("status" => "error");
+            return ['status' => 'error'];
         }
     }
 
@@ -453,5 +403,137 @@ abstract class FilterBaseController extends ApiMutableModelControllerBase
         $this->save();
 
         return ['status' => 'ok'];
+    }
+
+    /**
+     * Set a new sequence at the end when fetching a rule in copy mode.
+     *
+     * @param array $result
+     * @param mixed $rules
+     * @return array
+     */
+    protected function setCopySequence(array $result, $rules): array
+    {
+        if ($this->request->get('fetchmode') !== 'copy' || empty($result['rule'])) {
+            return $result;
+        }
+
+        $max = 0;
+        foreach ($rules->iterateItems() as $rule) {
+            $max = max($rule->sequence->asInt(), $max);
+        }
+
+        $result['rule']['sequence'] = $max + 100;
+        return $result;
+    }
+
+    /**
+     * Export a rule collection as CSV.
+     *
+     * @param string $node_reference: Model node reference to export, e.g. "rules.rule"
+     * @param array $ignored_fields: List of fields to omit from the exported CSV, e.g. "sort_order" as its a volatile field
+     * @param array $alias_fields: List of fields whose stored value is an alias UUID
+     *                             but should be exported as the alias name instead, e.g. "overload" table
+     * @return void
+     */
+    protected function downloadRulesBase($node_reference, array $ignored_fields = [], array $alias_fields = [])
+    {
+        if (!$this->request->isGet()) {
+            return;
+        }
+
+        /* categories have unique names, export names instead of ids so we can easily map them on other targets */
+        $categories = [];
+        foreach ((new Category())->categories->category->iterateItems() as $key => $category) {
+            $categories[$key] = $category->name->getValue();
+        }
+
+        $aliases = [];
+        if (!empty($alias_fields)) {
+            foreach ((new Alias())->aliases->alias->iterateItems() as $key => $alias) {
+                $aliases[$key] = $alias->name->getValue();
+            }
+        }
+
+        $node = $this->getModel();
+        foreach (explode('.', $node_reference) as $ref) {
+            $node = $node->$ref;
+        }
+
+        $ignored_fields = array_merge($this->export_ignore, $ignored_fields);
+
+        $this->exportCsv($node->asRecordSet(
+            false,
+            $ignored_fields,
+            function ($node, $record) use ($categories, $aliases, $alias_fields) {
+                if (!empty($record['categories'])) {
+                    $cats = [];
+                    foreach (explode(',', $record['categories']) as $key) {
+                        if (isset($categories[$key])) {
+                            $cats[] = $categories[$key];
+                        }
+                    }
+                    $record['categories'] = implode(',', $cats);
+                }
+
+                foreach ($alias_fields as $field) {
+                    if (!empty($record[$field]) && isset($aliases[$record[$field]])) {
+                        $record[$field] = $aliases[$record[$field]];
+                    }
+                }
+
+                return array_merge(['@uuid' => $node->getAttribute('uuid')], $record);
+            }
+        ));
+    }
+
+    protected function uploadRulesBase($node_reference, array $ignored_fields = [], array $alias_fields = [])
+    {
+        if (!$this->request->isPost() || !$this->request->hasPost('payload')) {
+            return ['status' => 'failed'];
+        }
+
+        /* categories have unique names, need to map them to uuids */
+        $categories = [];
+        foreach ((new Category())->categories->category->iterateItems() as $key => $category) {
+            $categories[$category->name->getValue()] = $key;
+        }
+
+        $aliases = [];
+        if (!empty($alias_fields)) {
+            foreach ((new Alias())->aliases->alias->iterateItems() as $key => $alias) {
+                $aliases[$alias->name->getValue()] = $key;
+            }
+        }
+
+        $ignored_fields = array_merge($this->export_ignore, $ignored_fields);
+
+        return $this->importCsv(
+            $node_reference,
+            $this->request->getPost('payload'),
+            ['@uuid'],
+            function (&$record) use ($categories, $aliases, $alias_fields, $ignored_fields) {
+                if (!empty($record['categories'])) {
+                    /* only map what we know, ignore the rest */
+                    $cats = [];
+                    foreach (explode(',', $record['categories']) as $key) {
+                        if (isset($categories[$key])) {
+                            $cats[] = $categories[$key];
+                        }
+                    }
+                    $record['categories'] = implode(',', $cats);
+                }
+
+                foreach ($alias_fields as $field) {
+                    if (!empty($record[$field]) && isset($aliases[$record[$field]])) {
+                        $record[$field] = $aliases[$record[$field]];
+                    }
+                }
+
+                foreach ($ignored_fields as $field) {
+                    unset($record[$field]);
+                }
+            }
+        );
     }
 }

@@ -399,6 +399,16 @@ abstract class BaseField
     }
 
     /**
+     * return initial value after loading from disk
+     * @return string field initial value
+     */
+    public function getInitialValue(): string
+    {
+        /* When internalInitialValue is set to true, the current value is the first value offered (just added) */
+        return $this->internalInitialValue === true ? $this->getValue() : (string)$this->internalInitialValue;
+    }
+
+    /**
      * return field current value(s) as array (empty strings are omitted)
      * @return array field current values
      */
@@ -724,7 +734,8 @@ abstract class BaseField
     }
 
     /**
-     * get nodes as array structure
+     * Get nodes as array structure, using getNodeData() to structure lists for the ui.
+     * When getNodeData() is a single (string) value, it might have a description for placeholders as well.
      * @return array
      */
     public function getNodes()
@@ -732,7 +743,15 @@ abstract class BaseField
         $result = [];
 
         foreach ($this->iterateItems() as $key => $node) {
-            $result[$key] = $node->isContainer() ? $node->getNodes() : $node->getNodeData();
+            if ($node->isContainer()) {
+                $result[$key] = $node->getNodes();
+            } else {
+                $result[$key] = $node->getNodeData();
+                $descr = $node->getDescription();
+                if (is_string($result[$key]) && $result[$key] !== $descr) {
+                    $result['%' . $key] = $descr;
+                }
+            }
         }
 
         return $result;
@@ -794,12 +813,19 @@ abstract class BaseField
         foreach ($this->iterateItems() as $key => $node) {
             if ($data != null && isset($data[$key])) {
                 if ($node->isContainer()) {
-                    if (is_array($data[$key])) {
-                        $node->setNodes($data[$key]);
-                    } else {
-                        throw new Exception("Invalid  input type for {$key} (configuration error?)");
+                    if (!is_array($data[$key])) {
+                        throw new Exception("Invalid input type for {$key}: expected a list");
                     }
+                    $node->setNodes($data[$key]);
+                } elseif ($node instanceof IStructuredInput) {
+                    if (!is_array($data[$key])) {
+                        throw new Exception("Invalid input type for {$key}: expected structured input");
+                    }
+                    $node->setValue($data[$key]);
                 } else {
+                    if (is_array($data[$key])) {
+                        throw new Exception("Invalid input type for {$key}: expected a single value");
+                    }
                     $node->setValue($data[$key]);
                 }
             }

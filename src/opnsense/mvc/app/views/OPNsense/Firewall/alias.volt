@@ -73,6 +73,7 @@
             del:'/api/firewall/alias/del_item/',
             toggle:'/api/firewall/alias/toggle_item/',
             options:{
+                virtualDOM: true,
                 requestHandler: function(request){
                     if ( $('#type_filter').val().length > 0) {
                         request['type'] = $('#type_filter').val();
@@ -83,14 +84,6 @@
                     return request;
                 },
                 formatters: {
-                    commands: function (column, row) {
-                        if (row.uuid.includes('-') === true) {
-                            // exclude buttons for internal aliases (which uses names instead of valid uuid's)
-                            return '<button type="button" class="btn btn-xs btn-default command-edit bootgrid-tooltip" data-row-id="' + row.uuid + '"><span class="fa fa-fw fa-pencil"></span></button> ' +
-                                '<button type="button" class="btn btn-xs btn-default command-copy bootgrid-tooltip" data-row-id="' + row.uuid + '"><span class="fa fa-fw fa-clone"></span></button>' +
-                                '<button type="button" class="btn btn-xs btn-default command-delete bootgrid-tooltip" data-row-id="' + row.uuid + '"><span class="fa fa-fw fa-trash-o"></span></button>';
-                        }
-                    },
                     rowtoggle: function (column, row) {
                         if (!row.uuid.includes('-')) {
                             return '<span class="fa fa-fw fa-check-square-o"></span>';
@@ -109,7 +102,7 @@
                                 let item = $("#"+row.categories_uuid[i]);
                                 if (item && item.data('color')) {
                                     html.push("<i class='fa fa-circle category-item' style='color:#"+
-                                           item.data('color')+"' title='"+item.text()+"'></i>");
+                                           htmlSafe(item.data('color'))+"' title='"+htmlSafe(item.text())+"'></i>");
                                 }
                             }
                             return html.join('&nbsp;');
@@ -120,9 +113,29 @@
                             return row[column.id].split('.')[0].replace('T', ' ');
                         }
                         return row[column.id];
+                    },
+                    alias_content: function (column, row) {
+                        if (['internal', 'external', 'authgroup'].includes(row.type)) {
+                            return $("<span/>")
+                                .append($("<i/>", {class: "fa fa-fw fa-random"}))
+                                .append(document.createTextNode(" {{ lang._('dynamic') }}"))[0];
+                        } else {
+                            return row[column.id];
+                        }
                     }
                 }
-            }
+            },
+            commands: {
+                edit: {
+                    filter: (cell) => cell.getData().uuid.includes('-')
+                },
+                copy: {
+                    filter: (cell) => cell.getData().uuid.includes('-')
+                },
+                delete: {
+                    filter: (cell) => cell.getData().uuid.includes('-')
+                }
+            },
         });
 
         $("#type_filter, #category_filter").change(function(){
@@ -685,7 +698,7 @@
                             <th data-column-id="name" data-width="20em" data-formatter="name">{{ lang._('Name') }}</th>
                             <th data-column-id="type" data-width="12em" data-type="string">{{ lang._('Type') }}</th>
                             <th data-column-id="description" data-type="string">{{ lang._('Description') }}</th>
-                            <th data-column-id="content" data-type="string">{{ lang._('Content') }}</th>
+                            <th data-column-id="content" data-type="string" data-formatter="alias_content">{{ lang._('Content') }}</th>
                             <th data-column-id="expire" data-type="string">{{ lang._('Expire') }}</th>
                             <th data-column-id="current_items" data-type="string">{{ lang._('Loaded#') }}</th>
                             <th data-column-id="last_updated" data-width="150" data-formatter="timestamp" data-type="string">{{ lang._('Last updated') }}</th>
@@ -740,7 +753,7 @@
         </div>
     </div>
 </div>
-{{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/firewall/alias/reconfigure'}) }}
+{{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/firewall/alias/reconfigure', 'data_exclude_scope': 'actions_tab'}) }}
 
 {# Edit dialog #}
 <div class="modal fade" id="DialogAlias" tabindex="-1" role="dialog" aria-labelledby="DialogAliasLabel">
@@ -766,7 +779,7 @@
                                     <td colspan="2" style="text-align:right;">
                                         <small>{{ lang._('full help') }} </small>
                                         <a href="#">
-                                            <i class="fa fa-toggle-off text-danger" id="show_all_help_formDialogformDialogAlias">
+                                            <i class="fa fa-toggle-off text-danger" id="show_all_help_frm_DialogAlias">
                                             </i>
                                         </a>
                                     </td>
@@ -1059,7 +1072,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">{{ lang._('Cancel') }}</button>
                 <button type="button" class="btn btn-primary" id="btn_DialogAlias_save">{{ lang._('Save') }}
-                    <i id="btn_formDialogAlias_save_progress" class=""></i></button>
+                    <i id="btn_DialogAlias_save_progress" class=""></i></button>
             </div>
         </div>
     </div>

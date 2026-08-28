@@ -84,13 +84,17 @@ if __name__ == '__main__':
             """
             params.append(inputargs.last_seen_window)
 
+        query += """
+            ORDER BY last_seen DESC
+        """
+
         for row in con.execute(query, params):
             record = [row['interface_name'], row['ether_address'], row['ip_address']]
             if inputargs.verbose:
                 record += [
                     row['organization_name'],
-                    row['first_seen'],
-                    row['last_seen']
+                    row['first_seen'].replace(' ', 'T') + 'Z',
+                    row['last_seen'].replace(' ', 'T') + 'Z'
                 ]
             result['rows'].append(record)
     else:
@@ -107,6 +111,7 @@ if __name__ == '__main__':
                     record = [row['interface'], row['mac-address'], row['ip-address']]
                     if inputargs.verbose:
                         record.append(OUI().get_vendor(row['mac-address'], ''))
+                        record.extend(['', '']) # match "discover" output
                     result['rows'].append(record)
         if 'inet6' in inputargs.proto and inputargs.ndp:
             sp = subprocess.run(['/usr/sbin/ndp', '-an'], capture_output=True, text=True)
@@ -116,5 +121,6 @@ if __name__ == '__main__':
                     record = [line_parts[2], line_parts[1], line_parts[0].split('%', 1)[0]]
                     if inputargs.verbose:
                         record.append(OUI().get_vendor(line_parts[1], ''))
+                        record.extend(['', '']) # match "discover" output
                     result['rows'].append(record)
     print(ujson.dumps(result))

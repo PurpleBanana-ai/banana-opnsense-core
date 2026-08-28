@@ -33,7 +33,7 @@ function map_ifs($ifs, $data)
 {
     $result = ["interfaces" => []];
     $temp = gettimeofday();
-    $result['time'] = (double)$temp["sec"] + (double)$temp["usec"] / 1000000.0;
+    $result['time'] = (float)$temp['sec'] + (float)$temp['usec'] / 1000000.0;
 
     foreach ($ifs as $interfaceKey => $itf) {
         if (array_key_exists($itf['if'], $data)) {
@@ -54,7 +54,7 @@ function map_ifs($ifs, $data)
 }
 
 if (isset($argv[1])) {
-    $intfs = legacy_config_get_interfaces(["virtual" => false]);
+    $intfs = legacy_config_get_interfaces(["virtual" => false, "enable" => true]);
     $prev = legacy_interface_stats();
 
     while (1) {
@@ -89,9 +89,9 @@ if (isset($argv[1])) {
     $result = array("interfaces" => array());
     $interfaces = legacy_interface_stats();
     $temp = gettimeofday();
-    $result['time'] = (double)$temp["sec"] + (double)$temp["usec"] / 1000000.0;
+    $result['time'] = (float)$temp["sec"] + (float)$temp["usec"] / 1000000.0;
     // collect user friendly interface names
-    foreach (legacy_config_get_interfaces(array("virtual" => false)) as $interfaceKey => $itf) {
+    foreach (legacy_config_get_interfaces(array("virtual" => false, "enable" => true)) as $interfaceKey => $itf) {
         if (array_key_exists($itf['if'], $interfaces)) {
             $result['interfaces'][$interfaceKey] = $interfaces[$itf['if']];
             $result['interfaces'][$interfaceKey]['name'] = !empty($itf['descr']) ? $itf['descr'] : $interfaceKey;

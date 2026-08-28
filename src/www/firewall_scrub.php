@@ -62,20 +62,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         } elseif (isset($config['system']['scrub_interface_disable'])) {
             unset($config['system']['scrub_interface_disable']);
         }
-        write_config();
-        mark_subsystem_dirty('filter');
+        if (write_config()) {
+            mark_subsystem_dirty('filter');
+        }
         header(url_safe('Location: /firewall_scrub.php'));
         exit;
     } elseif (isset($pconfig['apply'])) {
-        filter_configure();
-        clear_subsystem_dirty('filter');
+        if (write_config()) {
+            /* misuse write to check for write access */
+            configd_run('filter reload');
+            clear_subsystem_dirty('filter');
+        }
         header(url_safe('Location: /firewall_scrub.php?savemsg=yes'));
         exit;
     } elseif (isset($pconfig['act']) && $pconfig['act'] == 'del' && isset($id)) {
         // delete single item
         unset($a_scrub[$id]);
-        write_config();
-        mark_subsystem_dirty('filter');
+        if (write_config()) {
+            mark_subsystem_dirty('filter');
+        }
         header(url_safe('Location: /firewall_scrub.php'));
         exit;
     } elseif (isset($pconfig['act']) && $pconfig['act'] == 'del_x' && isset($pconfig['rule']) && count($pconfig['rule']) > 0) {
@@ -83,8 +88,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         foreach ($pconfig['rule'] as $rule_index) {
             unset($a_scrub[$rule_index]);
         }
-        write_config();
-        mark_subsystem_dirty('filter');
+        if (write_config()) {
+            mark_subsystem_dirty('filter');
+        }
         header(url_safe('Location: /firewall_scrub.php'));
         exit;
     } elseif ( isset($pconfig['act']) && $pconfig['act'] == 'move' && isset($pconfig['rule']) && count($pconfig['rule']) > 0) {
@@ -94,8 +100,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $id = count($a_scrub);
         }
         $a_scrub = legacy_move_config_list_items($a_scrub, $id,  $pconfig['rule']);
-        write_config();
-        mark_subsystem_dirty('filter');
+        if (write_config()) {
+            mark_subsystem_dirty('filter');
+        }
         header(url_safe('Location: /firewall_scrub.php'));
         exit;
 
@@ -106,8 +113,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         } else {
             $a_scrub[$id]['disabled'] = true;
         }
-        write_config();
-        mark_subsystem_dirty('filter');
+        if (write_config()) {
+            mark_subsystem_dirty('filter');
+        }
         header(url_safe('Location: /firewall_scrub.php'));
         exit;
     }
@@ -340,6 +348,7 @@ $( document ).ready(function() {
                     }?>
                     <td class="mightOverflow" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30ch;"><?=implode(', ', $scrubEntryInterfaceDescrs);?></td>
                     <td class="hidden-xs hidden-sm">
+                        <?=!empty($scrubEntry['srcnot']) ? '!' : '';?>
 <?php
                         if (is_alias($scrubEntry['src'])):?>
                         <span title="<?=htmlspecialchars(get_alias_description($scrubEntry['src']));?>" data-toggle="tooltip" data-html="true">
@@ -360,6 +369,7 @@ $( document ).ready(function() {
 
                     </td>
                     <td class="hidden-xs hidden-sm">
+                        <?=!empty($scrubEntry['dstnot']) ? '!' : '';?>
 <?php
                         if (is_alias($scrubEntry['dst'])):?>
                         <span title="<?=htmlspecialchars(get_alias_description($scrubEntry['dst']));?>" data-toggle="tooltip" data-html="true">

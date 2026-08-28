@@ -30,7 +30,6 @@ namespace OPNsense\Unbound\Api;
 
 use OPNsense\Base\ApiControllerBase;
 use OPNsense\Core\Backend;
-use OPNsense\Core\Config;
 use OPNsense\Firewall\Util;
 
 class OverviewController extends ApiControllerBase
@@ -72,8 +71,12 @@ class OverviewController extends ApiControllerBase
             return [];
         }
 
+        $types = $this->mdl->dnsbl->blocklist->getTemplateNode()->type->getNodeData();
         foreach ($parsed['top_blocked'] as $domain => $props) {
-            $parsed['top_blocked'][$domain]['blocklist'] ??= $this->getBlocklistDescription($props['blocklist']);
+            if (isset($types[$props['blocklist']]['optgroup'])) {
+                $parsed['top_blocked'][$domain]['category'] = $types[$props['blocklist']]['optgroup'];
+            }
+            $parsed['top_blocked'][$domain]['blocklist'] = $types[$props['blocklist']]['value'] ?? $props['blocklist'];
         }
 
         return $parsed;
@@ -100,8 +103,11 @@ class OverviewController extends ApiControllerBase
         $types = $this->mdl->dnsbl->blocklist->getTemplateNode()->type->getNodeData();
 
         foreach ($parsed as $idx => $query) {
-            $parsed[$idx]['blocklist'] = $types[$query['blocklist']]['value'] ?? $query['blocklist'];
-            $parsed[$idx]['policy'] = $policies[$query['uuid']]['description'] ?? '';
+            if (isset($types[$query['blocklist'] ?? '']['optgroup'])) {
+                $parsed[$idx]['category'] = $types[$query['blocklist']]['optgroup'];
+            }
+            $parsed[$idx]['blocklist'] = $types[$query['blocklist'] ?? '']['value'] ?? $query['blocklist'];
+            $parsed[$idx]['policy'] = $policies[$query['uuid'] ?? '']['description'] ?? '';
             /* Handle front-end color status mapping, start off with OK */
             $parsed[$idx]['status'] = 0;
 
@@ -126,5 +132,16 @@ class OverviewController extends ApiControllerBase
     public function getPoliciesAction()
     {
         return $this->mdl->dnsbl->blocklist->getNodeContent();
+    }
+
+    public function resetAction()
+    {
+        $result = ["status" => "failed"];
+
+        if ($this->request->isPost()) {
+            $result["status"] = (new Backend())->configdRun("unbound qstats reset");
+        }
+
+        return $result;
     }
 }

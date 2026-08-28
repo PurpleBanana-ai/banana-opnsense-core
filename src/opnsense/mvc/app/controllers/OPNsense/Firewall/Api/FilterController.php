@@ -27,10 +27,9 @@
  */
 namespace OPNsense\Firewall\Api;
 
-use OPNsense\Base\UserException;
+use OPNsense\Base\UserWarningException;
 use OPNsense\Core\Config;
 use OPNsense\Core\Backend;
-use OPNsense\Firewall\Alias;
 use OPNsense\Firewall\Category;
 use OPNsense\Firewall\Filter;
 use OPNsense\Firewall\Group;
@@ -57,13 +56,17 @@ class FilterController extends FilterBaseController
                 $descr = !empty($ifdetail->descr) ? $ifdetail->descr : strtoupper($key);
                 $this->legacy_fieldmap['interface'][$key] = $descr;
             }
-            $this->legacy_fieldmap['action'] = [
+            $this->legacy_fieldmap['%action'] = [
                 'block' => gettext('Block'),
                 'pass' => gettext('Pass'),
                 'reject' => gettext('Reject'),
             ];
-
-            $this->legacy_fieldmap['ipprotocol'] = [
+            $this->legacy_fieldmap['%direction'] = [
+                'in' => gettext('In'),
+                'out' => gettext('Out'),
+                'any' => gettext('Any'),
+            ];
+            $this->legacy_fieldmap['%ipprotocol'] = [
                 'inet' => gettext('IPv4'),
                 'inet6' => gettext('IPv6'),
                 'inet46' => '', /* XXX remove when filter.lib.inc use is removed */
@@ -89,7 +92,7 @@ class FilterController extends FilterBaseController
             // interface param may be empty
             $interfaces = array_filter(explode(',', (string)$this->request->get('interface')), 'strlen');
 
-            if ($show_all && !empty($interfaces)) {
+            if (!empty($interfaces)) {
                 /* add groups which contain the selected interface when looking at full impact */
                 foreach ((new Group())->ifgroupentry->iterateItems() as $groupItem) {
                     if (array_intersect($interfaces, $groupItem->members->getValues())) {
@@ -100,18 +103,8 @@ class FilterController extends FilterBaseController
         }
         /* extract all mvc records so we can filter and sort all at once */
         $allrules = [];
-        foreach ($this->getModel()->rules->rule->iterateItems() as $uuid => $record) {
-            $row = ['uuid' => $record->getAttributes()['uuid']];
-            $reflen = strlen($record->__reference) + 1;
-            foreach ($record->getFlatNodes() as $key => $val) {
-                $fieldname = substr($key, $reflen);
-                $descr = $val->getDescription();
-                $row[$fieldname] = $val->getValue();
-                if ($row[$fieldname] != $descr) {
-                    $row['%' . $fieldname] = $descr;
-                }
-            }
-            $allrules[] = $row;
+        foreach ($this->getModel()->rules->rule->iterateItems() as $key => $node) {
+            $allrules[] = array_merge(['uuid' => $key], $node->getNodeContent());
         }
 
         if ($show_all) {
@@ -121,25 +114,36 @@ class FilterController extends FilterBaseController
             $rule_stats = [];
         }
 
-        $filter_funct_rs = function (&$record) use ($categories, $interfaces, $rule_stats, $show_all) {
+        $filter_funct_rs = function (&$record) use ($categories, $interfaces, $rule_stats) {
             /* Filter criteria */
             $r_categories = !empty($record['categories']) ? array_map('trim', explode(',', $record['categories'])) : [];
             $is_cat = empty($categories) || array_intersect($r_categories, $categories);
             $rule_interfaces = array_filter(explode(',', $record['interface'] ?? ''));
-            if ($interfaces === null || (empty($record['interface']) && $show_all)) {
-                /* ALL interfaces always matches, when inspecting, also show rules that apply to all  */
-                $is_if = true; // ALL interfaces or floating always matches
-            } elseif (!empty($record['interfacenot']) && $show_all) {
-                /* Inverted interface, show where applicable when inspecting */
-                $is_if = !array_intersect($rule_interfaces, $interfaces ?? []);
-            } elseif (empty($interfaces) && (count($rule_interfaces) > 1 || !empty($record['interfacenot']))) {
-                /* Floating, multiple interfaces selected */
+            if ($interfaces === null || (empty($record['interface']))) {
+                /*
+                 * All rules view uses a "null" interface filter.
+                 * Rules without an assigned interface are floating/global and match everywhere.
+                 */
+                $is_if = true;
+            } elseif (!empty($record['interfacenot'])) {
+                /*
+                 * Inverted interface rule: selected interfaces are exclusions,
+                 * so show it only when none overlap with the active interface filter.
+                 * These also count as floating rules.
+                 */
+                $is_if = empty(array_intersect($rule_interfaces, $interfaces ?? []));
+            } elseif (empty($interfaces) && count($rule_interfaces) != 1) {
+                /*
+                 * Floating rules view: uses an "empty" interface filter.
+                 * Any rule not bound to exactly one interface counts as floating.
+                 */
                 $is_if = true;
             } else {
-                /* Interfaces overlap, when inspecting all overlaps are relevant, otherwise only exact matches */
-                $is_if = array_intersect($rule_interfaces, $interfaces ?? []) && (
-                    count($rule_interfaces) == 1 || $show_all
-                ) && empty($record['interfacenot']);
+                /*
+                 * Interface/Group rules view: show rules matching at least one selected interface or group.
+                 * This includes normal single interface/group and floating multi interface/group rules.
+                 */
+                $is_if = !empty(array_intersect($rule_interfaces, $interfaces ?? []));
             }
 
             if (!$is_cat || !$is_if) {
@@ -166,15 +170,8 @@ class FilterController extends FilterBaseController
                 $record = array_merge($record, $rule_stats[$record['uuid']]);
             }
 
-            // Tag legacy rules as "Automatic generated rules" if they have an empty category
-            if (!empty($record['is_automatic'])) {
-                $label = gettext('Automatically generated rules');
-                $record['categories'] = $label;  // Grouping key for tree view
-                $record['category_colors'] = [['name'  => $label]];  // Category formatter metadata
-            } else {
-                /* frontend can format categories with colors */
-                $record['category_colors'] = $this->getCategoryColors($r_categories);
-            }
+            /* frontend can format categories with colors */
+            $record['category_colors'] = $this->getCategoryColors($r_categories);
 
             /* frontend can format aliases with an alias icon */
             foreach (['source_net','source_port','destination_net','destination_port'] as $field) {
@@ -186,17 +183,16 @@ class FilterController extends FilterBaseController
             return true;
         };
 
-        /* only fetch internal and legacy rules when 'show_all' is set */
-        if ($show_all) {
-            $allrules = array_merge(
-                $allrules,
-                json_decode((new Backend())->configdRun('filter list non_mvc_rules'), true) ?? []
-            );
-        }
+        /* always fetch internal and legacy rules, automatic rules have their own category that is always visible */
+        $allrules = array_merge(
+            $allrules,
+            json_decode((new Backend())->configdRun('filter list non_mvc_rules'), true) ?? []
+        );
 
         $search_clauses = [];
         $backend = new Backend();
         foreach (preg_split('/\s+/', (string)$this->request->getPost('searchPhrase', null, '')) as $token) {
+            // XXX: ideally this should get its own parameter and not reuse show_all
             if ($show_all && Util::isIpAddress($token)) {
                 $tmp = json_decode($backend->configdpRun('filter find_table_references', [$token]), true) ?? [];
                 $aliases = [$token];
@@ -232,18 +228,10 @@ class FilterController extends FilterBaseController
 
     public function getRuleAction($uuid = null)
     {
-        $result = $this->getBase('rule', 'rules.rule', $uuid);
-
-        if ($this->request->get('fetchmode') === 'copy' && !empty($result['rule'])) {
-            /* copy mode, generate new sequence at the end */
-            $max = 0;
-            foreach ($this->getModel()->rules->rule->iterateItems() as $rule) {
-                $max = max($rule->sequence->asInt(), $max);
-            }
-            $result['rule']['sequence'] = $max + 100;
-        }
-
-        return $result;
+        return $this->setCopySequence(
+            $this->getBase('rule', 'rules.rule', $uuid),
+            $this->getModel()->rules->rule
+        );
     }
 
     public function delRuleAction($uuid)
@@ -300,7 +288,7 @@ class FilterController extends FilterBaseController
         $target_node = $this->getModel()->getNodeByReference('rules.rule.' . $target_uuid);
         $selected_node = $this->getModel()->getNodeByReference('rules.rule.' . $selected_uuid);
         if ($target_node === null || $selected_node === null) {
-            throw new UserException(
+            throw new UserWarningException(
                 gettext("Either source or destination is not a rule managed with this component"),
                 gettext("Filter")
             );
@@ -313,7 +301,7 @@ class FilterController extends FilterBaseController
             ];
             $selectedType = $typeNames[substr($selected_node->prio_group, 0, 1)] ?? gettext("Unknown");
             $targetType   = $typeNames[substr($target_node->prio_group, 0, 1)] ?? gettext("Unknown");
-            throw new UserException(
+            throw new UserWarningException(
                 sprintf(
                     gettext("Cannot move '%s Rule' before '%s Rule'."),
                     $selectedType,
@@ -322,7 +310,7 @@ class FilterController extends FilterBaseController
                 gettext("Filter")
             );
         } elseif ($selected_uuid === $target_uuid) {
-            throw new UserException(gettext("Cannot move to the same spot."), gettext("Filter"));
+            throw new UserWarningException(gettext("Cannot move to the same spot."), gettext("Filter"));
         }
         /* move the rule and optionally reorganize*/
         $step_size = 50;
@@ -381,31 +369,15 @@ class FilterController extends FilterBaseController
             ],
         ];
 
-        // Count rules per interface
-        $ruleCounts = [];
-        foreach ((new Filter())->rules->rule->iterateItems() as $rule) {
-            $interfaces = $rule->interface->getValues();
-
-            if (!$rule->interfacenot->isEmpty() || count($interfaces) !== 1) {
-                // floating: empty, multiple, or inverted interface
-                $ruleCounts['floating'] = ($ruleCounts['floating'] ?? 0) + 1;
-            } else {
-                // single interface
-                $ruleCounts[$interfaces[0]] = ($ruleCounts[$interfaces[0]] ?? 0) + 1;
-            }
-        }
-        $totalRules = array_sum($ruleCounts);
-
-        // Helper to build item with label and count
-        $makeItem = fn($value, $label, $count, $type) => [
+        // Helper to build item
+        $makeItem = fn($value, $label, $type) => [
             'value' => $value,
             'label' => $label,
-            'count' => $count,
             'type' => $type
         ];
 
         // Floating
-        $result['floating']['items'][] = $makeItem('__floating', gettext('Floating'), $ruleCounts['floating'] ?? 0, 'floating');
+        $result['floating']['items'][] = $makeItem('__floating', gettext('Floating'), 'floating');
 
         // Groups + Interfaces
         foreach (Config::getInstance()->object()->interfaces->children() as $key => $intf) {
@@ -415,89 +387,28 @@ class FilterController extends FilterBaseController
             }
             $descr = !empty($intf->descr) ? (string)$intf->descr : strtoupper($key);
             $type = (string)$intf->type == 'group' ? 'group' : 'interface';
-            $result["{$type}s"]['items'][] = $makeItem($key, $descr, $ruleCounts[$key] ?? 0, $type);
+            $result["{$type}s"]['items'][] = $makeItem($key, $descr, $type);
         }
 
-        // ALL rules
-        $result['any']['items'][] = $makeItem('__any', gettext('All rules'), $totalRules, 'any');
+        // All rules
+        $result['any']['items'][] = $makeItem('__any', gettext('All rules'), 'any');
 
         foreach ($result as &$section) {
-            usort($section['items'], fn($a, $b) => strcasecmp($a['label'], $b['label']));
+            usort($section['items'], fn($a, $b) => strnatcasecmp($a['label'], $b['label']));
         }
 
         return $result;
     }
 
+    // XXX: as shaper1/2 don't have functional keys, we can only export uuid's here
     public function downloadRulesAction()
     {
-        if ($this->request->isGet()) {
-            /* categories have unique names, export names instead of ids so we can easily map them on other targets */
-            $categories = [];
-            $aliases = [];
-            foreach ((new Category())->categories->category->iterateItems() as $key => $category) {
-                $categories[$key] = $category->name->getValue();
-            }
-            foreach ((new Alias())->aliases->alias->iterateItems() as $key => $alias) {
-                $aliases[$key] = $alias->name->getValue();
-            }
-            /* XXX:  as shaper1/2 don't have functional keys, we can only export uuid's here*/
-            $this->exportCsv($this->getModel()->rules->rule->asRecordSet(
-                false,
-                ['sort_order', 'prio_group'],
-                function ($node, $record) use ($categories, $aliases) {
-                    if (!empty($record['categories'])) {
-                        $cats = [];
-                        foreach (explode(',', $record['categories']) as $key) {
-                            if (isset($categories[$key])) {
-                                $cats[] = $categories[$key];
-                            }
-                        }
-                        $record['categories'] = implode(',', $cats);
-                    }
-                    if (!empty($record['overload']) && isset($aliases[$record['overload']])) {
-                        $record['overload'] = $aliases[$record['overload']];
-                    }
-                    return array_merge(['@uuid' => $node->getAttribute('uuid')], $record);
-                }
-            ));
-        }
+        return $this->downloadRulesBase('rules.rule', [], ['overload']);
     }
 
     public function uploadRulesAction()
     {
-        if ($this->request->isPost() && $this->request->hasPost('payload')) {
-            /* catgories have unique names, need to map them to uuids */
-            $categories = [];
-            $aliases = [];
-            foreach ((new Category())->categories->category->iterateItems() as $key => $category) {
-                $categories[$category->name->getValue()] = $key;
-            }
-            foreach ((new Alias())->aliases->alias->iterateItems() as $key => $alias) {
-                $aliases[$alias->name->getValue()] = $key;
-            }
-            return $this->importCsv(
-                'rules.rule',
-                $this->request->getPost('payload'),
-                ['@uuid'],
-                function (&$record) use ($categories, $aliases) {
-                    if (!empty($record['categories'])) {
-                        /* only map what we know, ignore the rest */
-                        $cats = [];
-                        foreach (explode(',', $record['categories']) as $key) {
-                            if (isset($categories[$key])) {
-                                $cats[] = $categories[$key];
-                            }
-                        }
-                        $record['categories'] = implode(',', $cats);
-                    }
-                    if (!empty($record['overload']) && isset($aliases[$record['overload']])) {
-                        $record['overload'] = $aliases[$record['overload']];
-                    }
-                }
-            );
-        } else {
-            return ['status' => 'failed'];
-        }
+        return $this->uploadRulesBase('rules.rule', [], ['overload']);
     }
 
     public function flushInspectCacheAction()

@@ -91,7 +91,8 @@ class DashboardController extends ApiControllerBase
                 ['id' => 'interfacestatistics', 'x' => 4, 'y' => 0, 'w' => 4],
                 ['id' => 'firewall', 'x' => 8, 'y' => 0, 'w' => 4],
                 ['id' => 'gateways', 'x' => 2, 'y' => 1, 'w' => 2],
-                ['id' => 'services', 'x' => 4, 'y' => 1, 'w' => '4'],
+                ['id' => 'interfaces', 'x' => 4, 'y' => 1, 'w' => 4],
+                ['id' => 'services', 'x' => 4, 'y' => 2, 'w' => '4'],
                 ['id' => 'traffic', 'x' => 8, 'y' => 1, 'w' => 4],
                 ['id' => 'cpu', 'x' => 0, 'y' => 1, 'w' => 2],
                 ['id' => 'announcements', 'x' => 2, 'y' => 2, 'w' => 2],
@@ -185,6 +186,7 @@ class DashboardController extends ApiControllerBase
             if ($this->usermdl->serializeToConfig(false, true)) {
                 /* selectively reset dashboard property, ignoring user-config-readonly when set */
                 Config::getInstance()->save();
+                $result['result'] = 'saved';
             }
         }
 
@@ -198,7 +200,6 @@ class DashboardController extends ApiControllerBase
         curl_setopt($ch, CURLOPT_URL, 'https://forum.opnsense.org/index.php?board=11.0&action=.xml;limit=5;type=rss2');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         $output = curl_exec($ch);
-        curl_close($ch);
         $payload = @simplexml_load_string($output);
         if (empty($payload)) {
             return $result;

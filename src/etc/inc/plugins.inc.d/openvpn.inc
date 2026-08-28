@@ -104,7 +104,7 @@ function openvpn_interfaces()
         $interfaces['openvpn'] = [
             'enable' => true,
             'if' => 'openvpn',
-            'descr' => 'OpenVPN',
+            'descr' => 'OpenVPN (Group)',
             'type' => 'group',
             'virtual' => true,
             'networks' => []
@@ -1045,9 +1045,10 @@ function openvpn_csc_conf_write($settings, $server, $target_filename = null)
 
     openvpn_add_dhcpopts($settings, $conf);
 
-    $vpnid = filter_var($server['vpnid'], FILTER_SANITIZE_NUMBER_INT);
     if (empty($target_filename)) {
-        $target_filename = "/var/etc/openvpn-csc/" . $vpnid . "/" . $settings['common_name'];
+        $vpnid = filter_var($server['vpnid'], FILTER_SANITIZE_NUMBER_INT);
+        $vpncn = basename($settings['common_name']);
+        $target_filename = "/var/etc/openvpn-csc/{$vpnid}/{$vpncn}";
     }
 
     if (!empty($conf)) {
@@ -1305,4 +1306,28 @@ function openvpn_refresh_crls()
             );
         }
     }
+}
+
+function openvpn_get_default_nat_outbound_networks($unused_fw = null)
+{
+    $result = [];
+
+    foreach (['server', 'client'] as $section) {
+        if (openvpn_legacy($section)) {
+            foreach (config_read_array('openvpn', "openvpn-{$section}", false) as $ovpn) {
+                if (!isset($ovpn['disable']) && !empty($ovpn['tunnel_network'])) {
+                    $result[$ovpn['tunnel_network']] = $ovpn['tunnel_network'];
+                }
+            }
+        }
+    }
+
+    return $result;
+}
+
+function openvpn_run()
+{
+    return [
+        'networks_source_nat' => 'openvpn_get_default_nat_outbound_networks',
+    ];
 }

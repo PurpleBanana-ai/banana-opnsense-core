@@ -3,7 +3,7 @@
         <name>System: Deny config write</name>
     </user-config-readonly>
     <page-diagnostics-backup-restore>
-        <name>Diagnostics: Backup / Restore</name>
+        <name>System: Configuration: Backups</name>
         <patterns>
             <pattern>diag_backup.php*</pattern>
         </patterns>
@@ -284,7 +284,8 @@
     <page-interfaces-assignnetworkports>
         <name>Interfaces: Assign network ports</name>
         <patterns>
-            <pattern>interfaces_assign.php*</pattern>
+            <pattern>ui/interfaces/assignment</pattern>
+            <pattern>api/interfaces/assignment/*</pattern>
         </patterns>
     </page-interfaces-assignnetworkports>
     <page-interfaces-bridge-edit>
@@ -337,15 +338,10 @@
     <page-interfaces-wireless-edit>
         <name>Interfaces: Wireless edit</name>
         <patterns>
-            <pattern>interfaces_wireless_edit.php*</pattern>
+            <pattern>ui/interfaces/wireless</pattern>
+            <pattern>api/interfaces/wireless_settings/*</pattern>
         </patterns>
     </page-interfaces-wireless-edit>
-    <page-interfaces-wireless>
-        <name>Interfaces: Wireless</name>
-        <patterns>
-            <pattern>interfaces_wireless.php*</pattern>
-        </patterns>
-    </page-interfaces-wireless>
     <page-wizard-system>
         <name>System: Configuration: Wizard</name>
         <patterns>
@@ -522,28 +518,16 @@
     <page-system-gatewaygroups>
         <name>System: Gateway Groups</name>
         <patterns>
-            <pattern>system_gateway_groups.php*</pattern>
+            <pattern>ui/routing/groups</pattern>
+            <pattern>api/routing/groupsettings/*</pattern>
         </patterns>
     </page-system-gatewaygroups>
-    <page-system-gateways-editgatewaygroups>
-        <name>System: Gateways: Edit Gateway Groups</name>
-        <patterns>
-            <pattern>system_gateway_groups_edit.php*</pattern>
-        </patterns>
-    </page-system-gateways-editgatewaygroups>
     <page-system-generalsetup>
         <name>System: General Setup</name>
         <patterns>
             <pattern>system_general.php*</pattern>
         </patterns>
     </page-system-generalsetup>
-    <page-system-groupmanager>
-        <name>System: Access: Groups</name>
-        <patterns>
-            <pattern>ui/auth/group</pattern>
-            <pattern>api/auth/group/*</pattern>
-        </patterns>
-    </page-system-groupmanager>
     <page-system-hasync>
         <name>System: High Availability</name>
         <patterns>
@@ -565,19 +549,16 @@
         </patterns>
     </page-system-staticroutes>
     <page-system-usermanager>
-        <name>System: Access: Users</name>
+        <name>System: Access: Management</name>
         <patterns>
             <pattern>ui/auth/user</pattern>
             <pattern>api/auth/user/*</pattern>
-        </patterns>
-    </page-system-usermanager>
-    <page-system-usermanager-addprivs>
-        <name>System: Access: Privileges</name>
-        <patterns>
+            <pattern>ui/auth/group</pattern>
+            <pattern>api/auth/group/*</pattern>
             <pattern>ui/auth/priv</pattern>
             <pattern>api/auth/priv/*</pattern>
         </patterns>
-    </page-system-usermanager-addprivs>
+    </page-system-usermanager>
     <page-system-usermanager-passwordmg>
         <name>Lobby: Password</name>
         <patterns>

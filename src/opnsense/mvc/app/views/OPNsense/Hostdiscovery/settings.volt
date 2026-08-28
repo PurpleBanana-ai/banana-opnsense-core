@@ -57,14 +57,6 @@
                                 }
                                 return params;
                             },
-                            responseHandler: function (response) {
-                                if (response.rows.length > 0 && response.rows[0].source == 'discovery') {
-                                    $("#legacy_alert").hide();
-                                } else {
-                                    $("#legacy_alert").show();
-                                }
-                                return response;
-                            }
                         }
                         });
                     } else {
@@ -87,7 +79,7 @@
 
 <ul class="nav nav-tabs" data-tabs="tabs" id="maintabs">
     <li><a data-toggle="tab" href="#settings" id="settings_tab">{{ lang._('Settings') }}</a></li>
-    <li><a data-toggle="tab" href="#hosts">{{ lang._('Discovered Hosts') }}</a></li>
+    <li><a data-toggle="tab" href="#hosts" id="discovered_tab">{{ lang._('Discovered Hosts') }}</a></li>
 </ul>
 <div class="tab-content content-box">
     <!-- Tab: General settings -->
@@ -96,11 +88,6 @@
     </div>
     <!-- Tab: Hosts -->
     <div id="hosts" class="tab-pane fade in">
-        <div style="padding: 10px;">
-            <div id="legacy_alert" class="alert alert-warning" role="alert" style="display: none;">
-                {{ lang._('Host discovery service is disabled, below the hosts currently known by this firewall via ARP and NDP') }}
-            </div>
-        </div>
         <table id="grid-hosts" class="table table-condensed table-hover table-striped table-responsive">
             <thead>
                 <tr>
@@ -109,7 +96,7 @@
                     <th data-column-id="ether_address" data-type="string">{{ lang._('MAC Address') }}</th>
                     <th data-column-id="organization_name" data-type="string">{{ lang._('Organization') }}</th>
                     <th data-column-id="first_seen" data-visible="false" data-type="string">{{ lang._('First Seen') }}</th>
-                    <th data-column-id="last_seen" data-type="string">{{ lang._('Last Seen') }}</th>
+                    <th data-column-id="last_seen" data-type="string" data-formatter="isodatetime">{{ lang._('Last Seen') }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -120,4 +107,4 @@
     </div>
 </div>
 
-{{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/hostdiscovery/service/reconfigure', 'data_service_widget': 'hostdiscovery'}) }}
+{{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/hostdiscovery/service/reconfigure', 'data_exclude_scope': 'discovered_tab', 'data_service_widget': 'hostdiscovery'}) }}

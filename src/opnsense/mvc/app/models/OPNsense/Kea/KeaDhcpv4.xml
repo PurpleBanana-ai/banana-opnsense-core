@@ -1,6 +1,6 @@
 <model>
     <mount>//OPNsense/Kea/dhcp4</mount>
-    <version>1.0.4</version>
+    <version>1.0.6</version>
     <description>Kea DHCPv4 configuration</description>
     <items>
         <general>
@@ -34,10 +34,19 @@
                 <Default>raw</Default>
                 <Required>Y</Required>
                 <OptionValues>
-                    <udp>udp</udp>
-                    <raw>raw</raw>
+                    <udp/>
+                    <raw/>
                 </OptionValues>
             </dhcp_socket_type>
+            <compatibility type="OptionField">
+                <Multiple>Y</Multiple>
+                <OptionValues>
+                    <exclude-first-last-24/>
+                    <ignore-dhcp-server-identifier/>
+                    <ignore-rai-link-selection/>
+                    <lenient-option-parsing/>
+                </OptionValues>
+            </compatibility>
         </general>
         <lexpire>
             <hold_reclaimed_time type="IntegerField">
@@ -76,6 +85,17 @@
         </ha>
         <subnets>
             <subnet4 type="ArrayField">
+                <subnet_id type="AutoNumberField">
+                    <Required>Y</Required>
+                    <MinimumValue>1</MinimumValue>
+                    <MaximumValue>4294967294</MaximumValue>
+                    <Constraints>
+                        <check001>
+                            <type>UniqueConstraint</type>
+                            <ValidationMessage>Subnet ID must be unique.</ValidationMessage>
+                        </check001>
+                    </Constraints>
+                </subnet_id>
                 <subnet type="NetworkField">
                     <NetMaskRequired>Y</NetMaskRequired>
                     <AddressFamily>ipv4</AddressFamily>
@@ -156,6 +176,14 @@
                     <Default>1</Default>
                     <Required>Y</Required>
                 </match-client-id>
+                <allocator type="OptionField">
+                    <BlankDesc>Default</BlankDesc>
+                    <OptionValues>
+                        <iterative>Iterative</iterative>
+                        <random>Random</random>
+                        <flq>Free Lease Queue</flq>
+                    </OptionValues>
+                </allocator>
                 <pools type=".\KeaPoolsField"/>
                 <ddns_forward_zone type="HostnameField">
                     <IpAllowed>N</IpAllowed>
@@ -210,12 +238,12 @@
                 </ddns_domain_key_secret>
                 <ddns_domain_key_algorithm type="OptionField">
                     <OptionValues>
-                        <hmac-md5>hmac-md5</hmac-md5>
-                        <hmac-sha1>hmac-sha1</hmac-sha1>
-                        <hmac-sha224>hmac-sha224</hmac-sha224>
-                        <hmac-sha256>hmac-sha256</hmac-sha256>
-                        <hmac-sha384>hmac-sha384</hmac-sha384>
-                        <hmac-sha512>hmac-sha512</hmac-sha512>
+                        <hmac-md5/>
+                        <hmac-sha1/>
+                        <hmac-sha224/>
+                        <hmac-sha256/>
+                        <hmac-sha384/>
+                        <hmac-sha512/>
                     </OptionValues>
                     <Constraints>
                         <check001>
@@ -233,9 +261,9 @@
                 <ddns_conflict_resolution_mode type="OptionField">
                     <BlankDesc>check-with-dhcid (default)</BlankDesc>
                     <OptionValues>
-                        <no-check-with-dhcid>no-check-with-dhcid</no-check-with-dhcid>
-                        <check-exists-with-dhcid>check-exists-with-dhcid</check-exists-with-dhcid>
-                        <no-check-without-dhcid>no-check-without-dhcid</no-check-without-dhcid>
+                        <no-check-with-dhcid/>
+                        <check-exists-with-dhcid/>
+                        <no-check-without-dhcid/>
                     </OptionValues>
                 </ddns_conflict_resolution_mode>
                 <description type="DescriptionField"/>
@@ -301,6 +329,10 @@
                     <IsDNSName>Y</IsDNSName>
                 </hostname>
                 <description type="DescriptionField"/>
+                <next_server type="NetworkField">
+                    <NetMaskAllowed>N</NetMaskAllowed>
+                    <AddressFamily>ipv4</AddressFamily>
+                </next_server>
                 <option_data>
                     <domain_name_servers type="NetworkField">
                         <NetMaskAllowed>N</NetMaskAllowed>
@@ -366,15 +398,15 @@
                     <Required>Y</Required>
                     <Default>hex</Default>
                     <OptionValues>
-                        <hex>hex</hex>
+                        <hex>Hex</hex>
                         <ipv4-address>IPv4 address</ipv4-address>
                         <ipv6-address>IPv6 address</ipv6-address>
-                        <uint8>uint8</uint8>
-                        <uint16>uint16</uint16>
-                        <uint32>uint32</uint32>
-                        <int32>int32</int32>
-                        <boolean>bool</boolean>
-                        <string>string</string>
+                        <uint8>Uint8</uint8>
+                        <uint16>Uint16</uint16>
+                        <uint32>Uint32</uint32>
+                        <int32>Int32</int32>
+                        <boolean>Boolean</boolean>
+                        <string>String</string>
                         <fqdn>FQDN</fqdn>
                     </OptionValues>
                 </encoding>
@@ -404,15 +436,15 @@
                 </match_code>
                 <match_encoding type="OptionField">
                     <OptionValues>
-                        <hex>hex</hex>
+                        <hex>Hex</hex>
                         <ipv4-address>IPv4 address</ipv4-address>
                         <ipv6-address>IPv6 address</ipv6-address>
-                        <uint8>uint8</uint8>
-                        <uint16>uint16</uint16>
-                        <uint32>uint32</uint32>
-                        <int32>int32</int32>
-                        <boolean>bool</boolean>
-                        <string>string</string>
+                        <uint8>Uint8</uint8>
+                        <uint16>Uint16</uint16>
+                        <uint32>Uint32</uint32>
+                        <int32>Int32</int32>
+                        <boolean>Boolean</boolean>
+                        <string>String</string>
                         <fqdn>FQDN</fqdn>
                     </OptionValues>
                     <Constraints>
@@ -465,8 +497,8 @@
                     <Default>primary</Default>
                     <Required>Y</Required>
                     <OptionValues>
-                        <primary>primary</primary>
-                        <standby>standby</standby>
+                        <primary>Primary</primary>
+                        <standby>Standby</standby>
                     </OptionValues>
                 </role>
                 <url type="UrlField">

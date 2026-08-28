@@ -29,7 +29,6 @@ require_once('script/load_phalcon.php');
 require_once('util.inc');
 require_once('config.inc');
 require_once('interfaces.inc');
-require_once('plugins.inc');
 require_once('filter.inc');
 
 
@@ -67,14 +66,12 @@ foreach ($fw->iterateFilterRules() as $prio => $item) {
     $rule = $item->getRawRule();
     if (empty($rule['disabled'])) {
         $rule['enabled'] = '1';
-        $rule['direction'] = $rule['direction'] ?? 'in';
         foreach ($mapping as $src => $dst) {
             $rule[$dst] = $rule[$src] ?? '';
             if (isset($rule[$src])) {
                 unset($rule[$src]);
             }
         }
-        $rule['action'] = $rule['action'] ?? 'pass';
         if (!empty($rule['from_not'])) {
             unset($rule['from_not']);
             $rule['source_not'] = true;
@@ -99,12 +96,21 @@ foreach ($fw->iterateFilterRules() as $prio => $item) {
             }
         }
 
-
         foreach (['source_net', 'destination_net', 'source_port', 'destination_port'] as $field) {
             if (!empty($rule[$field] && $rule[$field] != '(self)')) {
                 $rule[$field] = trim($rule[$field], '()<>{}');
             }
         }
+
+        // The %fields need translations in the controller
+        $rule['direction'] = $rule['direction'] ?? 'in';
+        $rule['%direction'] = $rule['direction'];
+        $rule['action'] = $rule['action'] ?? 'pass';
+        $rule['%action'] = $rule['action'];
+        $rule['ipprotocol'] = $rule['ipprotocol'] ?? '';
+        $rule['%ipprotocol'] = $rule['ipprotocol'];
+        $rule['protocol'] = $rule['protocol'] ?? '';
+        $rule['%protocol'] = strtoupper($rule['protocol']);
 
         /**
          * Evaluation order consists of a priority group and a sequence within the set,

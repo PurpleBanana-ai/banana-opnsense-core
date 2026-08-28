@@ -17,6 +17,17 @@
         </grid_view>
     </field>
     <field>
+        <!-- Does not exist in model, only exists for grid sorting purposes -->
+        <id>rule.sort_order</id>
+        <label>Sort order</label>
+        <type>ignore</type>
+        <grid_view>
+            <sequence>10</sequence>
+            <visible>false</visible>
+            <order>asc</order>
+        </grid_view>
+    </field>
+    <field>
         <id>rule.sequence</id>
         <label>Sequence</label>
         <type>text</type>
@@ -24,7 +35,6 @@
         <advanced>true</advanced>
         <grid_view>
             <visible>false</visible>
-            <order>asc</order>
         </grid_view>
     </field>
     <field>
@@ -279,6 +289,80 @@
         <help>By default, firewall rules need to be created manually, which is also the advised option. Alternatively you can use Pass, which passes traffic on the nat rule (not visible in the rules tab) or register automatic interface rules which can be overruled via rules with a higher priority. Please keep in mind the destination for the rule should match the target defined in this NAT rule.</help>
         <grid_view>
             <visible>false</visible>
+        </grid_view>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Audit</label>
+        <collapse>true</collapse>
+    </field>
+    <field>
+        <type>subheader</type>
+        <label>Created</label>
+    </field>
+    <field>
+        <id>rule.audit.created.username</id>
+        <label>Username</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.created.time</id>
+        <label>Time</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.created.description</id>
+        <label>Description</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <type>subheader</type>
+        <label>Updated</label>
+    </field>
+    <field>
+        <id>rule.audit.updated.username</id>
+        <label>Username</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.updated.time</id>
+        <label>Time</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <id>rule.audit.updated.description</id>
+        <label>Description</label>
+        <type>info</type>
+        <grid_view>
+            <ignore>true</ignore>
+        </grid_view>
+    </field>
+    <field>
+        <type>subheader</type>
+        <label>Userdata</label>
+    </field>
+    <field>
+        <id>rule.audit.userdata.note</id>
+        <label>Note</label>
+        <type>textbox</type>
+        <help>Add a note to describe why this rule was created or changed.</help>
+        <grid_view>
+            <ignore>true</ignore>
         </grid_view>
     </field>
 </form>

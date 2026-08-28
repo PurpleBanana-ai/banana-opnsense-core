@@ -98,7 +98,7 @@
     <li><a data-toggle="tab" id="statistics" href="#tab_statistics">{{ lang._('Statistics') }}</a></li>
 </ul>
 <div class="tab-content content-box">
-    <div id="tab_local" class="tab-pane fade in active __mb">
+    <div id="tab_local" class="tab-pane fade in active">
         <!-- tab page "local" -->
         {{ partial("layout_partials/base_form",['fields':localForm,'id':'frm_local_settings'])}}
     </div>
@@ -121,18 +121,17 @@
             <tbody>
             </tbody>
         </table>
-        <hr/>
     </div>
 </div>
 
-<button class="btn pull-right" id="resetAct" style="display: none;"
+<button class="btn btn-primary __mr" id="resetAct" style="display: none;"
         data-endpoint='/api/syslog/service/reset'
         data-label="{{ lang._('Reset Log Files') }}"
         data-error-title="{{ lang._('Error resetting Syslog') }}"
         type="button"
 ></button>
 
-{{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/syslog/service/reconfigure', 'data_service_widget': 'syslog'}) }}
+{{ partial('layout_partials/base_apply_button', {'data_endpoint': '/api/syslog/service/reconfigure', 'data_exclude_scope': 'statistics', 'data_service_widget': 'syslog'}) }}
 
 {# include dialogs #}
 {{ partial("layout_partials/base_dialog",['fields':formDialogDestination,'id':formGridDestination['edit_dialog_id'],'label':lang._('Edit destination')])}}

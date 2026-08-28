@@ -1,4 +1,5 @@
 <menu>
+    <Favorites order="5" cssClass="fa fa-star"/>
     <Lobby order="10" cssClass="fa fa-laptop">
         <Dashboard order="0" url="/ui/core/dashboard" cssClass="fa fa-dashboard fa-fw">
             <Args url="/index.php*" visibility="hidden"/>
@@ -12,7 +13,6 @@
         <Logout order="3" url="/index.php?logout" cssClass="fa fa-sign-out fa-fw"/>
     </Lobby>
     <Reporting order="15" cssClass="fa fa-area-chart">
-        <Settings order="10" url="/reporting_settings.php" cssClass="fa fa-cog fa-fw"/>
         <Traffic order="20" url="/ui/diagnostics/traffic" cssClass="fa fa-line-chart fa-fw"/>
         <DNS order="30" VisibleName="Unbound DNS" url="/ui/unbound/overview" cssClass="fa fa-bar-chart fa-fw"/>
     </Reporting>
@@ -44,10 +44,7 @@
         </Firmware>
         <Gateways cssClass="fa fa-location-arrow fa-fw">
             <Configuration order="10" url="/ui/routing/configuration"/>
-            <Group order="20" url="/system_gateway_groups.php">
-                <List url="/system_gateway_groups.php*" visibility="hidden"/>
-                <Edit url="/system_gateway_groups_edit.php*" visibility="hidden"/>
-            </Group>
+            <Group order="20" url="/ui/routing/gateway_groups"/>
             <LogFile VisibleName="Log File" order="30" url="/ui/diagnostics/log/core/gateways"/>
         </Gateways>
         <HighAvailability VisibleName="High Availability" cssClass="fa fa-refresh fa-fw">
@@ -91,12 +88,7 @@
         </Aliases>
         <Categories url="/ui/firewall/category" cssClass="fa fa-tags fa-fw"/>
         <Groups url="/ui/firewall/group" cssClass="fa fa-sitemap fa-fw"/>
-        <NAT cssClass="fa fa-exchange fa-fw">
-            <Outbound order="300" VisibleName="Outbound" url="/firewall_nat_out.php">
-                <Edit url="/firewall_nat_out_edit.php*" visibility="hidden"/>
-            </Outbound>
-        </NAT>
-        <Rules VisibleName="Rules [legacy]" cssClass="fa fa-check fa-fw" />
+        <NAT cssClass="fa fa-exchange fa-fw"/>
         <Settings order="200" cssClass="fa fa-cogs fa-fw">
             <Schedules url="/firewall_schedule.php">
                 <SchedulesEdit url="/firewall_schedule_edit.php*" visibility="hidden"/>

@@ -1,6 +1,6 @@
 <model>
     <mount>//OPNsense/Kea/dhcp6</mount>
-    <version>1.0.1</version>
+    <version>1.0.3</version>
     <description>Kea DHCPv6 configuration</description>
     <items>
         <general>
@@ -29,15 +29,15 @@
             <mac_sources type="OptionField">
                 <Default>ipv6-link-local</Default>
                 <Required>Y</Required>
-                <OptionValues>
-                    <duid>duid</duid>
-                    <ipv6-link-local>ipv6-link-local</ipv6-link-local>
-                    <client-link-addr-option>client-link-addr-option</client-link-addr-option>
-                    <remote-id>remote-id</remote-id>
-                    <docsis-cmts>docsis-cmts</docsis-cmts>
-                    <docsis-modem>docsis-modem</docsis-modem>
-                </OptionValues>
                 <Multiple>Y</Multiple>
+                <OptionValues>
+                    <duid/>
+                    <ipv6-link-local/>
+                    <client-link-addr-option/>
+                    <remote-id/>
+                    <docsis-cmts/>
+                    <docsis-modem/>
+                </OptionValues>
             </mac_sources>
             <fwrules type="BooleanField">
                 <Required>Y</Required>
@@ -81,10 +81,20 @@
         </ha>
         <subnets>
             <subnet6 type="ArrayField">
+                <subnet_id type="AutoNumberField">
+                    <Required>Y</Required>
+                    <MinimumValue>1</MinimumValue>
+                    <MaximumValue>4294967294</MaximumValue>
+                    <Constraints>
+                        <check001>
+                            <type>UniqueConstraint</type>
+                            <ValidationMessage>Subnet ID must be unique.</ValidationMessage>
+                        </check001>
+                    </Constraints>
+                </subnet_id>
                 <subnet type="NetworkField">
                     <NetMaskRequired>Y</NetMaskRequired>
                     <AddressFamily>ipv6</AddressFamily>
-                    <Required>Y</Required>
                     <Constraints>
                         <check001>
                             <type>UniqueConstraint</type>
@@ -98,18 +108,23 @@
                 <allocator type="OptionField">
                     <BlankDesc>Default</BlankDesc>
                     <OptionValues>
-                        <iterative>iterative</iterative>
-                        <random>random</random>
+                        <iterative>Iterative</iterative>
+                        <random>Random</random>
+                        <flq>Free Lease Queue</flq>
                     </OptionValues>
                 </allocator>
                 <pd-allocator type="OptionField">
                     <BlankDesc>Default</BlankDesc>
                     <OptionValues>
-                        <iterative>iterative</iterative>
-                        <random>random</random>
-                        <flq>Free Lease Queue Allocator</flq>
+                        <iterative>Iterative</iterative>
+                        <random>Random</random>
+                        <flq>Free Lease Queue</flq>
                     </OptionValues>
                 </pd-allocator>
+                <option_data_autocollect type="BooleanField">
+                    <Default>0</Default>
+                    <Required>Y</Required>
+                </option_data_autocollect>
                 <option_data>
                     <dns_servers type="NetworkField">
                         <NetMaskAllowed>N</NetMaskAllowed>
@@ -139,6 +154,10 @@
                 <interface type="InterfaceField">
                     <Required>Y</Required>
                 </interface>
+                <dynamic_prefix type="BooleanField">
+                    <Required>Y</Required>
+                    <Default>0</Default>
+                </dynamic_prefix>
                 <ddns_forward_zone type="HostnameField">
                     <IpAllowed>N</IpAllowed>
                     <Constraints>
@@ -192,12 +211,12 @@
                 </ddns_domain_key_secret>
                 <ddns_domain_key_algorithm type="OptionField">
                     <OptionValues>
-                        <hmac-md5>hmac-md5</hmac-md5>
-                        <hmac-sha1>hmac-sha1</hmac-sha1>
-                        <hmac-sha224>hmac-sha224</hmac-sha224>
-                        <hmac-sha256>hmac-sha256</hmac-sha256>
-                        <hmac-sha384>hmac-sha384</hmac-sha384>
-                        <hmac-sha512>hmac-sha512</hmac-sha512>
+                        <hmac-md5/>
+                        <hmac-sha1/>
+                        <hmac-sha224/>
+                        <hmac-sha256/>
+                        <hmac-sha384/>
+                        <hmac-sha512/>
                     </OptionValues>
                     <Constraints>
                         <check001>
@@ -215,9 +234,9 @@
                 <ddns_conflict_resolution_mode type="OptionField">
                     <BlankDesc>check-with-dhcid (default)</BlankDesc>
                     <OptionValues>
-                        <no-check-with-dhcid>no-check-with-dhcid</no-check-with-dhcid>
-                        <check-exists-with-dhcid>check-exists-with-dhcid</check-exists-with-dhcid>
-                        <no-check-without-dhcid>no-check-without-dhcid</no-check-without-dhcid>
+                        <no-check-with-dhcid/>
+                        <check-exists-with-dhcid/>
+                        <no-check-without-dhcid/>
                     </OptionValues>
                 </ddns_conflict_resolution_mode>
                 <description type="DescriptionField"/>
@@ -230,9 +249,11 @@
                         <subnets>
                             <source>OPNsense.Kea.KeaDhcpv6</source>
                             <items>subnets.subnet6</items>
-                            <display>subnet</display>
+                            <display>interface,subnet</display>
+                            <display_format>%s %s</display_format>
                         </subnets>
                     </Model>
+                    <DisableCache>Y</DisableCache>
                     <ValidationMessage>Related subnet not found.</ValidationMessage>
                     <Constraints>
                         <check001>
@@ -326,15 +347,15 @@
                     <Required>Y</Required>
                     <Default>hex</Default>
                     <OptionValues>
-                        <hex>hex</hex>
+                        <hex>Hex</hex>
                         <ipv4-address>IPv4 address</ipv4-address>
                         <ipv6-address>IPv6 address</ipv6-address>
-                        <uint8>uint8</uint8>
-                        <uint16>uint16</uint16>
-                        <uint32>uint32</uint32>
-                        <int32>int32</int32>
-                        <boolean>bool</boolean>
-                        <string>string</string>
+                        <uint8>Uint8</uint8>
+                        <uint16>Uint16</uint16>
+                        <uint32>Uint32</uint32>
+                        <int32>Int32</int32>
+                        <boolean>Boolean</boolean>
+                        <string>String</string>
                         <fqdn>FQDN</fqdn>
                     </OptionValues>
                 </encoding>
@@ -364,15 +385,15 @@
                 </match_code>
                 <match_encoding type="OptionField">
                     <OptionValues>
-                        <hex>hex</hex>
+                        <hex>Hex</hex>
                         <ipv4-address>IPv4 address</ipv4-address>
                         <ipv6-address>IPv6 address</ipv6-address>
-                        <uint8>uint8</uint8>
-                        <uint16>uint16</uint16>
-                        <uint32>uint32</uint32>
-                        <int32>int32</int32>
-                        <boolean>bool</boolean>
-                        <string>string</string>
+                        <uint8>Uint8</uint8>
+                        <uint16>Uint16</uint16>
+                        <uint32>Uint32</uint32>
+                        <int32>Int32</int32>
+                        <boolean>Boolean</boolean>
+                        <string>String</string>
                         <fqdn>FQDN</fqdn>
                     </OptionValues>
                     <Constraints>
@@ -417,9 +438,11 @@
                         <subnets>
                             <source>OPNsense.Kea.KeaDhcpv6</source>
                             <items>subnets.subnet6</items>
-                            <display>subnet</display>
+                            <display>interface,subnet</display>
+                            <display_format>%s %s</display_format>
                         </subnets>
                     </Model>
+                    <DisableCache>Y</DisableCache>
                     <ValidationMessage>Related subnet not found.</ValidationMessage>
                     <Required>Y</Required>
                 </subnet>
@@ -429,8 +452,6 @@
                 <prefix_len type="IntegerField">
                     <MinimumValue>1</MinimumValue>
                     <MaximumValue>128</MaximumValue>
-                    <Default>56</Default>
-                    <Required>Y</Required>
                 </prefix_len>
                 <delegated_len type="IntegerField">
                     <MinimumValue>1</MinimumValue>
@@ -456,8 +477,8 @@
                     <Default>primary</Default>
                     <Required>Y</Required>
                     <OptionValues>
-                        <primary>primary</primary>
-                        <standby>standby</standby>
+                        <primary>Primary</primary>
+                        <standby>Standby</standby>
                     </OptionValues>
                 </role>
                 <url type="UrlField">

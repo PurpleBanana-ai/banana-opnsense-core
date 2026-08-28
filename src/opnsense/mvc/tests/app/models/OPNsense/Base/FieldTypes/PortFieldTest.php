@@ -86,6 +86,20 @@ class PortFieldTest extends Field_Framework_TestCase
     }
 
     /**
+     * reject whitespaces around port numbers
+     */
+    public function testWhitespaceInvalid()
+    {
+        $field = new PortField();
+        $field->setEnableRanges("Y");
+        $field->eventPostLoading();
+        foreach (['80 ', ' 80', '1024-65535 ', ' 1024-65535', '1024 -65535', '1024- 65535'] as $value) {
+            $field->setValue($value);
+            $this->assertNotEmpty($this->validate($field), "Whitespace should be invalid");
+        }
+    }
+
+    /**
      * all items valid
      */
     public function testValidValueList()
@@ -108,7 +122,7 @@ class PortFieldTest extends Field_Framework_TestCase
         $field->setEnableWellKnown("Y");
         $field->setMultiple("Y");
         $field->eventPostLoading();
-        $field->setValue("80;443;https;80-100");
+        $field->setValue("80,443,https,80-100");
         $this->assertNotEmpty($this->validate($field));
     }
 
@@ -131,5 +145,24 @@ class PortFieldTest extends Field_Framework_TestCase
     {
         $field = new PortField();
         $this->assertFalse($field->isContainer());
+    }
+
+    /**
+     * normalizedPort() functionality
+     */
+    public function testNormalizeValue()
+    {
+        $field = new PortField();
+        $field->setValue('');
+        $this->assertEquals('', $field->normalizedPort());
+        $field->setValue('http');
+        $this->assertEquals('80', $field->normalizedPort());
+        $field->setValue('80');
+        $this->assertEquals('80', $field->normalizedPort());
+        $field->setValue('xxx');
+        $this->assertEquals('xxx', $field->normalizedPort());
+        /* XXX this will fail when multiple values are supported */
+        $field->setValue('http,https');
+        $this->assertEquals('http,https', $field->normalizedPort());
     }
 }

@@ -31,17 +31,16 @@ require_once("guiconfig.inc");
 require_once("interfaces.inc");
 
 $input_errors = array();
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $pconfig = array("authmode" => "", "username" => "", "password" => "");
-} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $pconfig = $_POST;
+$pconfig = array("authmode" => "", "username" => "", "password" => "");
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $pconfig = array_merge($pconfig, $_POST);
 
-    $authcfg = auth_get_authserver($_POST['authmode']);
+    $authcfg = auth_get_authserver($pconfig['authmode']);
     if (!$authcfg) {
-        $input_errors[] = $_POST['authmode'] . " " . gettext("is not a valid authentication server");
+        $input_errors[] = $pconfig['authmode'] . " " . gettext("is not a valid authentication server");
     }
 
-    if (empty($_POST['username']) || empty($_POST['password'])) {
+    if (empty($pconfig['username']) || empty($pconfig['password'])) {
         $input_errors[] = gettext("A username and password must be specified.");
     }
 
@@ -54,12 +53,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
         $authFactory = new OPNsense\Auth\AuthenticationFactory();
         $authenticator = $authFactory->get($authName);
-        if ($authenticator->authenticate($_POST['username'], $_POST['password'])) {
-            $savemsg = gettext("User") . ": " . $_POST['username'] . " " . gettext("authenticated successfully.");
+        if ($authenticator->authenticate($pconfig['username'], $pconfig['password'])) {
+            $savemsg = gettext("User") . ": " . $pconfig['username'] . " " . gettext("authenticated successfully.");
             OPNsense\Core\Config::getInstance()->forceReload();
             $config = parse_config();
             $userindex = index_users();
-            $groups = getUserGroups($authenticator->getUserName($_POST['username']));
+            $groups = getUserGroups($authenticator->getUserName($pconfig['username']));
             $savemsg .= "<br /><br/><strong>" . gettext("This user is a member of these groups") . ": </strong> <br />";
             foreach ($groups as $group) {
                 $savemsg .= "{$group} ";
@@ -67,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $savemsg .= "<br /><br/><strong>" . gettext("May access the following locations, depending on source address") . ":</strong> <br />";
             $savemsg .= "<table style='width:700px;' class='alert-info'>";
             $savemsg .= sprintf("<tr><td>%s</td><td>%s</td></tr>", gettext('Uri'), gettext('Networks'));
-            foreach ((new \OPNsense\Core\ACL())->userUrlMasks($_POST['username']) as $item) {
+            foreach ((new \OPNsense\Core\ACL())->userUrlMasks($pconfig['username']) as $item) {
                 $savemsg .= sprintf("<tr><td>%s</td><td>%s</td></tr>", $item[0], implode(',', $item[1]));
             }
             $savemsg .= "</table>";
@@ -92,7 +91,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
 }
-
+legacy_html_escape_form_data($pconfig);
+$authservers = auth_get_authserver_list();
+legacy_html_escape_form_data($authservers);
 include("head.inc");
 
 ?>
@@ -115,9 +116,9 @@ include("head.inc");
                   <td style="width:78%">
                     <select class="selectpicker" name="authmode" id="authmode" >
 <?php
-                    foreach (auth_get_authserver_list() as $auth_server_id => $auth_server):?>
+                    foreach ($authservers as $auth_server_id => $auth_server):?>
                       <option value="<?=$auth_server_id;?>" <?=$auth_server['name'] == $pconfig['authmode'] ? "selected=\"selected\"" : "";?>>
-                        <?=htmlspecialchars($auth_server['name']);?>
+                        <?=$auth_server['name'];?>
                       </option>
 <?php
                     endforeach; ?>
@@ -126,11 +127,11 @@ include("head.inc");
                 </tr>
                 <tr>
                   <td style="width:22%"><?=gettext("Username"); ?></td>
-                  <td style="width:78%"><input type="text" name="username" value="<?=htmlspecialchars($pconfig['username']);?>"></td>
+                  <td style="width:78%"><input type="text" name="username" value="<?=$pconfig['username'];?>"></td>
                 </tr>
                 <tr>
                   <td style="width:22%"><?=gettext("Password"); ?></td>
-                  <td style="width:78%"><input type="password" autocomplete="new-password" name="password" value="<?=htmlspecialchars($pconfig['password']);?>"></td>
+                  <td style="width:78%"><input type="password" autocomplete="new-password" name="password" value="<?=$pconfig['password'];?>"></td>
                 </tr>
                 <tr>
                   <td style="width:22%">&nbsp;</td>

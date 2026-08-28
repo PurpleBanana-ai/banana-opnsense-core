@@ -1,5 +1,5 @@
 """
-    Copyright (c) 2015-2023 Ad Schellevis <ad@opnsense.org>
+    Copyright (c) 2015-2026 Ad Schellevis <ad@opnsense.org>
     All rights reserved.
 
     Redistribution and use in source and binary forms, with or without
@@ -38,7 +38,6 @@ import shlex
 import collections
 import traceback
 import copy
-import codecs
 import jinja2
 from .addons import template_helpers
 from . import syslog_error, syslog_notice
@@ -81,7 +80,7 @@ class Template(object):
             # return source when unable to decode
             return x
 
-    def list_module(self, module_name):
+    def list_module(self, module_name, strict=False):
         """ list single module content
         :param module_name: module name in dot notation ( company.module )
         :return: dictionary with module data
@@ -99,7 +98,10 @@ class Template(object):
                     for line in fhandle.read().split('\n'):
                         parts = line.split(':')
                         if len(parts) > 1 and parts[0].strip()[0] != '#':
-                            source_file = parts[0].strip()
+                            if parts[0].startswith('!') and strict:
+                                # template reference is strict, only generate when explicity requested
+                                continue
+                            source_file = parts[0].lstrip('!').strip()
                             target_name = parts[1].strip()
                             if target_name in list(result['+TARGETS'].values()):
                                 syslog_notice("template overlay %s with %s" % (
@@ -214,15 +216,16 @@ class Template(object):
                 if not os.path.exists(tmppart):
                     os.mkdir(tmppart)
 
-    def _generate(self, module_name, create_directory=True):
+    def _generate(self, module_name, create_directory=True, strict=False):
         """ generate configuration files for one section using bound config and template data
 
         :param module_name: module name in dot notation ( company.module )
         :param create_directory: automatically create directories to place template output in ( if not existing )
+        :param strict: exact module was matched instead of a pattern used (e.g. template reload *)
         :return: list of generated output files
         """
         result = []
-        module_data = self.list_module(module_name)
+        module_data = self.list_module(module_name, strict)
         for src_template in list(module_data['+TARGETS']):
             target = module_data['+TARGETS'][src_template]
 
@@ -234,8 +237,8 @@ class Template(object):
                     for filename in list(result_filenames):
                         if target_filters[target_filter][key] is not None \
                                 and filename.find('[%s]' % target_filter) > -1:
-                            new_filename = filename.replace('[%s]' % target_filter, target_filters[target_filter][key])
-                            new_filename = new_filename.replace('//', '/')
+                            opt_value = os.path.basename(target_filters[target_filter][key])
+                            new_filename = os.path.normpath(filename.replace('[%s]' % target_filter, opt_value))
                             result_filenames[new_filename] = copy.deepcopy(result_filenames[filename])
                             result_filenames[new_filename][key] = target_filters[target_filter][key]
 
@@ -270,7 +273,7 @@ class Template(object):
                             # make sure the target directory exists
                             self._create_directory(filename)
 
-                        f_out = codecs.open(filename, 'wb', encoding="utf-8")
+                        f_out = open(filename, 'w', encoding="utf-8")
                         f_out.write(content)
                         # Check if the last character of our output contains an end-of-line, if not copy it in if
                         # it was in the original template.
@@ -325,7 +328,7 @@ class Template(object):
         for template_name in self.iter_modules(module_name):
             syslog_notice("generate template container %s" % template_name)
             try:
-                for filename in self._generate(template_name, create_directory):
+                for filename in self._generate(template_name, create_directory, module_name.find('*') > -1):
                     result.append(filename)
             except Exception as render_exception:
                 # log failure, but proceed processing for possible wildcard search

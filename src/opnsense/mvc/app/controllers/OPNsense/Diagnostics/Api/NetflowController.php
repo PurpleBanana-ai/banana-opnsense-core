@@ -80,6 +80,7 @@ class NetflowController extends ApiControllerBase
     {
         $result = array("result" => "failed");
         if ($this->request->hasPost("netflow")) {
+            $this->throwReadOnly();
             // load model and update with provided data
             $mdlNetflow = new Netflow();
             $mdlNetflow->setNodes($this->request->getPost("netflow"));
@@ -122,10 +123,10 @@ class NetflowController extends ApiControllerBase
         if ($this->request->isPost()) {
             // reconfigure netflow
             $backend = new Backend();
-            $backend->configdRun('template reload OPNsense/Netflow');
             // restart netflow, by calling stop (which will always stop the collectors) and start
             // (which will only start if there are collectors configured)
             $backend->configdRun("netflow stop");
+            $backend->configdRun('template reload OPNsense/Netflow');
             $backend->configdRun("netflow start");
             $mdlNetflow = new Netflow();
             if ((string)$mdlNetflow->collect->enable == 1) {
@@ -179,5 +180,16 @@ class NetflowController extends ApiControllerBase
         } else {
             return array();
         }
+    }
+
+    public function resetAction()
+    {
+        $result = ["status" => "failed"];
+
+        if ($this->request->isPost()) {
+            $result["status"] = (new Backend())->configdRun("netflow flush");
+        }
+
+        return $result;
     }
 }

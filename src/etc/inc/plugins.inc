@@ -68,7 +68,7 @@ function plugins_scan($glob = '*')
 
 function plugins_services()
 {
-    $services = array();
+    $services = [];
 
     foreach (plugins_scan() as $name => $path) {
         try {
@@ -97,6 +97,7 @@ function plugins_devices()
     $defaults = [
         'configurable' => true, /* allow to configure IP connectivity */
         'pattern' => '^impossiblecontrolmatch$', /* never match by default */
+        'reload' => true, /* allow to reload on the fly */
         'spoofmac' => true, /* allow to change the MAC address */
         'volatile' => false, /* device known to persist */
     ];
@@ -125,7 +126,7 @@ function plugins_devices()
 
 function plugins_cron()
 {
-    $jobs = array();
+    $jobs = [];
 
     foreach (plugins_scan() as $name => $path) {
         try {
@@ -150,7 +151,7 @@ function plugins_cron()
  */
 function plugins_syslog()
 {
-    $syslogs = array();
+    $syslogs = [];
 
     foreach (plugins_scan() as $name => $path) {
         try {
@@ -366,7 +367,7 @@ function plugins_run($hook, $args = [])
 
 function plugins_xmlrpc_sync()
 {
-    $sync_settings = array();
+    $sync_settings = [];
     foreach (plugins_scan() as $name => $path) {
         try {
             include_once $path;

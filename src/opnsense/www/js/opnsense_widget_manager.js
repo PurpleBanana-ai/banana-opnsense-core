@@ -33,7 +33,8 @@ class ResizeObserverWrapper {
         this._observer = new ResizeObserver(debounce((entries) => {
             if (entries != undefined && entries.length > 0) {
                 for (const entry of entries) {
-                    const width = entry.contentRect.width;
+                    const size = entry.borderBoxSize?.[0];
+                    const width = size ? size.inlineSize : entry.target.getBoundingClientRect().width;
                     const height = entry.contentRect.height;
 
                     let id = entry.target.id;
@@ -57,7 +58,7 @@ class ResizeObserverWrapper {
         }));
 
         elements.forEach((element) => {
-            this._observer.observe(element);
+            this._observer.observe(element, { box: "border-box" });
         });
     }
 
@@ -194,7 +195,7 @@ class WidgetManager  {
             this.widgetClasses[id].onVisibilityChanged(!document.hidden);
         });
 
-        if (!id in this.widgetTranslations) {
+        if (!(id in this.widgetTranslations)) {
             console.error('Missing translations for widget', id);
         }
 
@@ -289,6 +290,8 @@ class WidgetManager  {
 
                     // load a known layout based on the current column count
                     this.grid.load(Object.values({...this.widgetConfigurations, ...this.layouts[this.curColCount]}));
+                } else {
+                    this.grid.compact();
                 }
             }
         })
@@ -530,8 +533,9 @@ class WidgetManager  {
 
         // trigger initial widget resize and start observing resize events
         this.resizeObserver.observe(
-            [document.querySelector(`.widget-${widget.id}`)],
+            [document.querySelector(`.widget-${widget.id}`).parentElement],
             (elem, width, height) => {
+                elem = elem.firstElementChild;
                 for (const subclass of elem.className.split(" ")) {
                     let id = subclass.split('-')[1];
                     if (id in this.widgetClasses) {
@@ -792,6 +796,15 @@ class WidgetManager  {
                     $option.append($(`<div><b>${value.title}</b></div>`));
                     $option.append($select);
                     break;
+                case 'text':
+                    let $textInput = $(`<input type="text" class="form-control" id="${value.id}">`);
+                    $textInput.val(config[key] ?? '');
+                    if (value.placeholder) {
+                        $textInput.attr('placeholder', value.placeholder);
+                    }
+                    $option.append($(`<div><b>${value.title}</b></div>`));
+                    $option.append($textInput);
+                    break;
                 case 'textarea':
                     let $textarea = $(`<textarea
                                      id="${value.id}"
@@ -802,7 +815,7 @@ class WidgetManager  {
                                          resize: vertical;
                                          min-height: ${value.minHeight || '150px'};
                                          box-sizing: border-box;
-                                     ">${config[key] || ''}</textarea>`);
+                                     "></textarea>`).val(config[key] || '');
                     $option.append($textarea);
                     break;
                 default:
@@ -836,6 +849,9 @@ class WidgetManager  {
                                 if (values[key].count === 0) {
                                     values[key] = value.default;
                                 }
+                                break;
+                            case 'text':
+                                values[key] = $(`#${value.id}`).val() ?? value.default;
                                 break;
                             case 'textarea':
                                 values[key] = $(`#${value.id}`).val() ?? value.default;
